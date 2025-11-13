@@ -77,7 +77,7 @@ export default function TenantDetail() {
   const [showDeployModal, setShowDeployModal] = useState(false)
 
   const deployMutation = useMutation({
-    mutationFn: (data: { applicationId: string; releaseName?: string; values?: Record<string, any> }) =>
+    mutationFn: (data: { application_id: string; release_name?: string; values?: Record<string, any> }) =>
       applicationsApi.deploy(tenantId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deployed-applications', tenantId] })
@@ -93,7 +93,7 @@ export default function TenantDetail() {
   })
 
   const handleDeploy = (applicationId: string) => {
-    deployMutation.mutate({ applicationId })
+    deployMutation.mutate({ application_id: applicationId })
   }
 
   const handleUninstall = (deploymentId: number, appName: string) => {

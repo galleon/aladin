@@ -115,8 +115,8 @@ export interface DeployedApplication {
 }
 
 export interface DeployApplicationRequest {
-    applicationId: string;
-    releaseName?: string;
+    application_id: string;
+    release_name?: string;
     values?: Record<string, any>;
 }
 
