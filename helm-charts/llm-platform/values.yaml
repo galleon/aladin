@@ -1,0 +1,47 @@
+# Default values for llm-platform
+replicas: 1
+
+image:
+  repository: nginx
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    memory: "1Gi"
+    cpu: "500m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
+
+# Tenant configuration
+tenant:
+  name: ""
+  namespace: ""
+
+# LLM specific configuration
+llm:
+  model: "gpt-3.5-turbo"
+  apiKey: ""
+  endpoint: ""
+
+# Monitoring
+monitoring:
+  enabled: true
+  metricsPort: 9090
+
+# Token tracking
+tokenTracking:
+  enabled: true
+  backendUrl: "http://aladin-backend:3000"
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
