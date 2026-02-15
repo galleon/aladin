@@ -1,38 +1,50 @@
-"""FastAPI application entry point."""
+"""RAG Agent Management Platform - Main Application."""
+
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from app.config import settings
-from app.database import init_db
-from app.logger import setup_logging, logger
-from app.routers import tenants, applications, monitoring, billing, tasks
+import structlog
 
-# Setup logging
-setup_logging(settings.log_level)
+from .config import settings
+from .database import engine, Base
+from .routers import (
+    auth,
+    data_domains,
+    agents,
+    conversations,
+    models,
+    translation,
+    ingestion,
+    video_transcription,
+    jobs,
+    stats,
+)
+
+logger = structlog.get_logger()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan events."""
-    # Startup
-    logger.info("Starting application")
-    try:
-        init_db()
-        logger.info("Database initialized")
-    except Exception as e:
-        logger.error("Failed to initialize database", error=str(e))
-        raise
+    """Application lifespan manager."""
+    logger.info("Starting ALADIN Platform")
+    logger.info(
+        "Video transcription",
+        available=bool(settings.WHISPER_API_BASE),
+    )
+
+    # Skip automatic table creation - tables are managed via migrations
+    # New tables (chat_sessions, rag_citations) with UUIDs require migration
+    # and will cause foreign key type mismatches if auto-created
+    logger.info("Database tables should be migrated manually - skipping auto-creation")
 
     yield
 
-    # Shutdown
-    logger.info("Shutting down application")
+    logger.info("Shutting down ALADIN Platform")
 
 
-# Create FastAPI app
 app = FastAPI(
-    title="Aladin Backend API",
-    description="Backend API for Aladin LLM Platform Management",
+    title=settings.APP_NAME,
+    description="A platform for managing RAG agents and data domains",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -40,33 +52,32 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Configure appropriately for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Health check
+# Include routers
+app.include_router(auth.router, prefix="/api")
+app.include_router(data_domains.router, prefix="/api")
+app.include_router(agents.router, prefix="/api")
+app.include_router(conversations.router, prefix="/api")
+app.include_router(models.router, prefix="/api")
+app.include_router(translation.router, prefix="/api")
+app.include_router(ingestion.router, prefix="/api")
+app.include_router(video_transcription.router, prefix="/api")
+app.include_router(jobs.router, prefix="/api")
+app.include_router(stats.router, prefix="/api")
+
+
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {"name": settings.APP_NAME, "version": "1.0.0", "status": "running"}
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "ok"}
-
-
-# Include routers
-app.include_router(tenants.router, prefix="/api/tenants", tags=["tenants"])
-app.include_router(applications.router, prefix="/api/applications", tags=["applications"])
-app.include_router(monitoring.router, prefix="/api/monitoring", tags=["monitoring"])
-app.include_router(billing.router, prefix="/api/billing", tags=["billing"])
-app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "app.main:app",
-        host=settings.host,
-        port=settings.port,
-        log_level=settings.log_level,
-    )
-
+    return {"status": "healthy"}

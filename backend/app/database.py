@@ -9,7 +9,7 @@ import structlog
 logger = structlog.get_logger()
 
 # Database URL from settings
-DATABASE_URL = settings.database_url
+DATABASE_URL = settings.DATABASE_URL
 
 # Create engine
 engine = create_engine(
@@ -37,10 +37,8 @@ def get_db():
 
 def init_db():
     """Initialize database tables."""
-    try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables initialized")
-    except Exception as e:
-        logger.error("Database initialization error", error=str(e))
-        raise
+    # Disabled - tables should be created via migration scripts
+    # Auto-creation causes conflicts with new UUID-based schema
+    logger.info("Database initialization skipped - use migration scripts")
+    pass
 

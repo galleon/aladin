@@ -4,19 +4,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
 develop-eggs/
-dist/
-downloads/
 eggs/
 .eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -24,12 +14,6 @@ MANIFEST
 .venv/
 venv/
 ENV/
-env/
-.python-version
-*.pyc
-*.pyo
-*.pyd
-.Python
 pip-log.txt
 pip-delete-this-directory.txt
 
@@ -51,44 +35,34 @@ lerna-debug.log*
 .yarn/install-state.gz
 .pnp.*
 
-# Frontend build outputs
+# Build outputs
 dist/
 dist-ssr/
 build/
-*.local
 
 # IDEs and editors
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
-.DS_Store
 *.sublime-project
 *.sublime-workspace
 *.code-workspace
 
 # Environment variables
 .env
-.env.local
-.env.*.local
-.env.development
-.env.production
-.env.test
+.env.*
+!.env.example
+*.local
 
 # Logs
 *.log
 logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-.pnpm-debug.log*
 
 # Docker
-.dockerignore
 docker-compose.override.yml
-*.dockerfile.local
 
 # Database
 *.db
@@ -96,19 +70,11 @@ docker-compose.override.yml
 *.sqlite3
 postgres_data/
 
-# Kubernetes
-*.kubeconfig.local
-kubeconfig
-/tmp/kubeconfig*
-
 # Temporary files
 tmp/
 temp/
 *.tmp
 *.bak
-*.swp
-*.swo
-*~
 
 # OS files
 .DS_Store
@@ -131,57 +97,47 @@ htmlcov/
 .cache
 nosetests.xml
 coverage.xml
-*.cover
-.hypothesis/
 
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# pyenv
-.python-version
-
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
+# Type checkers
 .mypy_cache/
 .dmypy.json
 dmypy.json
-
-# Pyre type checker
 .pyre/
-
-# pytype static type analyzer
 .pytype/
-
-# Cython debug symbols
 cython_debug/
 
-# Backup files
-*.backup
-*.old
+# Data and media files (user-specific test data)
+data/
+jobs/
+tts_out/
+*.mp3
+*.mp4
+*.wav
+*.srt
 
-# Helm
-.helm/
+# Benchmark / scratch output
+benchmark_results.csv
+results.txt
+models
 
-# Kind cluster kubeconfigs (user-specific)
-kind-*.yaml.local
+# AI tool configs
+.claude/
+CLAUDE.md
 
-# Application specific
+# PID files
 *.pid
-*.seed
-*.pid.lock
+
+# Scratch / design docs (not part of the app)
+KNOWLEDGE_GRAPH_COMPARISON.md
+KNOWLEDGE_GRAPH_ENHANCEMENTS.md
+RAG_DATA_DOMAIN_MIGRATION.md
+
+# Personal utility scripts
+scripts/tts_longform.py
+scripts/benchmark_openai.py
+
+# uv
+uv.lock
