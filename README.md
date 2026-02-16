@@ -16,14 +16,16 @@ A full-stack RAG (Retrieval-Augmented Generation) platform for building AI assis
 ```
 Frontend (React/TS, port 5174)
   │
-  ├── Backend (FastAPI, port 3000) ── PostgreSQL (metadata)
-  │       │                          ── Qdrant (vector search)
-  │       │                          ── Redis (job queue)
-  │       │                          ── LLM APIs
+  ├── Backend (FastAPI, port 3000)
+  |       |── PostgreSQL (metadata)
+  │       │── Qdrant (vector search)
+  │       │── Redis (job queue)
+  │       │── LLM APIs
   │
-  └── Worker (ARQ) ── document ingestion
-                    ── video transcription + VLM analysis
-                    ── web crawling
+  └── Worker (ARQ)
+          |── document ingestion
+          |── video transcription + VLM analysis
+          |── web crawling
 ```
 
 Additional services: chat-ui (port 7860), Jaeger tracing (optional, `observability` profile).
