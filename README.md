@@ -5,6 +5,7 @@ A full-stack RAG (Retrieval-Augmented Generation) platform for building AI assis
 ## Features
 
 - **Document RAG** — Upload PDFs, DOCX, TXT, MD, CSV, JSON, or crawl web pages. Documents are chunked, embedded, and stored in Qdrant for semantic search. Chat with agents that cite sources with relevance scores.
+- **Voice chat with VAD** — Talk to your agents using voice input with automatic Voice Activity Detection (VAD). Responses can be read aloud with text-to-speech. Uses OpenAI-compatible STT/TTS APIs.
 - **Video transcription** — Transcribe video/audio files via Whisper API. Optionally analyse segments with a vision LLM (VLM) and YOLO object tracking.
 - **Document translation** — Translate documents between languages using any OpenAI-compatible LLM.
 - **Multi-LLM support** — Any OpenAI-compatible endpoint (OpenAI, Anthropic via proxy, LiteLLM, local models). Models are fetched dynamically from the configured endpoint.
@@ -57,6 +58,26 @@ The application will be available at:
 2. Create a **Data Domain** — upload documents or crawl a URL
 3. Create an **Agent** — pick a model, write a system prompt, link data domains
 4. **Chat** — ask questions and get answers with source citations
+5. **Voice Chat** (optional) — Click the microphone button to speak your question. The system will automatically detect when you stop speaking (VAD). Assistant responses can be played aloud using the speaker icon next to each message.
+
+### Voice Chat Configuration
+
+To enable voice chat, set up OpenAI-compatible STT/TTS endpoints:
+
+```bash
+# Speech-to-Text (uses Whisper endpoint by default)
+STT_API_BASE=https://api.openai.com/v1
+STT_API_KEY=sk-your-openai-api-key
+STT_MODEL=whisper-1
+
+# Text-to-Speech
+TTS_API_BASE=https://api.openai.com/v1
+TTS_API_KEY=sk-your-openai-api-key
+TTS_MODEL=tts-1
+TTS_VOICE=alloy  # Options: alloy, echo, fable, onyx, nova, shimmer
+```
+
+If not configured, the voice buttons will still appear but API calls will fail gracefully.
 
 ## Project structure
 
@@ -106,6 +127,8 @@ See `env.local.template` for the full list. Key variables:
 | `SECRET_KEY` | JWT signing key (min 32 chars) |
 | `LLM_API_BASE` / `LLM_API_KEY` | OpenAI-compatible LLM endpoint |
 | `EMBEDDING_API_BASE` / `EMBEDDING_MODEL` | Embedding endpoint and model name |
+| `STT_API_BASE` / `STT_API_KEY` | Speech-to-Text API for voice chat (optional, falls back to WHISPER_API_BASE) |
+| `TTS_API_BASE` / `TTS_API_KEY` | Text-to-Speech API for voice chat (optional) |
 | `WHISPER_API_BASE` | Whisper API for video transcription (optional) |
 | `VLM_API_BASE` / `VLM_MODEL` | Vision LLM for video analysis (optional) |
 | `DB_*`, `QDRANT_*`, `REDIS_*` | Service connection settings |
