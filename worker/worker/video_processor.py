@@ -136,6 +136,7 @@ class VideoProcessor:
         segment_sec: float = 4.0,
         overlap_sec: float = 1.0,
         num_frames: int = 10,
+        deblurrer_name: str | None = None,
     ) -> dict:
         """
         Process a video for ingestion.
@@ -188,6 +189,7 @@ class VideoProcessor:
                     log_vlm_outcome=settings.LOG_VLM_OUTCOME,
                     log_vlm_outcome_sample_every=settings.LOG_VLM_OUTCOME_SAMPLE_EVERY,
                     log_vlm_review_file=settings.LOG_VLM_OUTCOME_REVIEW_FILE,
+                    deblurrer_name=deblurrer_name or settings.DEBLUR_NAME,
                 )
 
                 # Read JSONL chunks

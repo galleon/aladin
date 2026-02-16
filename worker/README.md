@@ -209,16 +209,10 @@ From the `worker` directory (or with the package installed):
 
 ```bash
 # Procedure mode (steps: actions, tools, results, warnings)
-python -m video_ingest demo.mp4 --mode procedure --segment-sec 4 --overlap-sec 1 --frames 10 --out chunks.jsonl
+python -m worker video demo.mp4 --mode procedure --segment-sec 4 --overlap-sec 1 --frames 10 --out chunks.jsonl
 
 # Race mode (per-track commentary, interactions) with simple tracker
-python -m video_ingest race_cam.mp4 --mode race --out chunks.jsonl --tracker simple
-```
-
-Or via the `worker.video` module:
-
-```bash
-python -m worker.video demo.mp4 --mode procedure --out chunks.jsonl --tracker noop
+python -m worker video race_cam.mp4 --mode race --out chunks.jsonl --tracker simple
 ```
 
 ### Options
@@ -257,3 +251,22 @@ run_video_pipeline(
 ```
 
 Implement the HTTP/encoding logic in `CosmosVLMBackend.analyze_segment` (see `worker/video/vlm_backend.py`). For on‑prem, add another backend class that conforms to the `VLMBackend` protocol and pass it as `vlm`.
+
+---
+
+## Unified CLI
+
+All ingestion tasks use a single entry point:
+
+```bash
+# File: extract and chunk document to JSONL
+python -m worker file document.pdf --out chunks.jsonl
+
+# Video: segment and analyze MP4
+python -m worker video demo.mp4 --mode procedure --out chunks.jsonl
+
+# Web: crawl URL and chunk to JSONL
+python -m worker web https://example.com --out chunks.jsonl --depth 2 --max-pages 10
+```
+
+For full pipeline (embed + Qdrant), use the API.

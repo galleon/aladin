@@ -67,5 +67,5 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.hatch.build.targets.wheel]
-packages = ["shared", "worker", "video_ingest"]
+packages = ["shared", "worker"]
 

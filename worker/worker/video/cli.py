@@ -1,5 +1,5 @@
 """
-CLI for video ingestion: python -m worker.video or python -m video_ingest.
+CLI for video ingestion: python -m worker video <path>
 """
 
 from __future__ import annotations

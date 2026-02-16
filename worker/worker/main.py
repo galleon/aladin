@@ -20,8 +20,8 @@ from shared.config import settings
 from shared.schemas import IngestionJobStatus
 from shared.telemetry import setup_telemetry, get_tracer, IngestionMetrics
 
-from .web_processor import WebProcessor
-from .file_processor import FileProcessor
+from .web import WebProcessor
+from .file import FileProcessor
 from .video_processor import VideoProcessor
 
 # Configure logging

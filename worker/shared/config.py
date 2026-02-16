@@ -79,6 +79,12 @@ class Settings(BaseSettings):
     YOLO_API_KEY: str = os.getenv("YOLO_API_KEY", "")
     YOLO_MODEL_ID: str = os.getenv("YOLO_MODEL_ID", "yolov8n-640/1")
 
+    # Deblurring (optional, before VLM/CV in video pipeline)
+    DEBLUR_API_BASE: Optional[str] = os.getenv("DEBLUR_API_BASE")
+    DEBLUR_API_KEY: Optional[str] = os.getenv("DEBLUR_API_KEY")
+    DEBLUR_MODEL: str = os.getenv("DEBLUR_MODEL", "deblur-gan-inception")
+    DEBLUR_NAME: str = os.getenv("DEBLUR_NAME", "none")  # "none" or "inception"
+
     # Storage paths
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "/data/uploads")
     TEMP_DIR: str = os.getenv("TEMP_DIR", "/data/temp")
