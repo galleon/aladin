@@ -48,7 +48,6 @@ async def transcribe_audio(
         "audio/mpeg",
         "audio/mp3",
         "audio/mp4",
-        "audio/mpeg",
         "audio/mpga",
         "audio/m4a",
         "audio/wav",

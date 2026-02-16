@@ -103,7 +103,7 @@ export default function VoiceButton({
                     <div
                         className="h-full bg-red-500 transition-all duration-100"
                         style={{
-                            width: `${Math.min((audioLevel / 100) * 100, 100)}%`,
+                            width: `${Math.min(audioLevel, 100)}%`,
                         }}
                     />
                 </div>

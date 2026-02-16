@@ -62,7 +62,7 @@ export function useVoice({
         setAudioLevel(0);
     }, []);
 
-    // Monitor audio level for VAD
+    # Monitor audio level for VAD
     const monitorAudioLevel = useCallback(() => {
         if (!analyserRef.current) return;
 
@@ -96,7 +96,7 @@ export function useVoice({
         };
 
         checkLevel();
-    }, [recordingState, vadThreshold, vadSilenceDuration]);
+    }, [recordingState, vadThreshold, vadSilenceDuration, stopRecording]);
 
     // Start recording
     const startRecording = useCallback(async () => {
