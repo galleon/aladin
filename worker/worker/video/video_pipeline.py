@@ -25,6 +25,7 @@ from .schemas import (
 from .video_processor import segment_video
 from .vlm_backend import VLMBackend, unpack_vlm_for_log
 from .tracker import NoopTracker, SimpleColorBlobTracker, Tracker, YOLOTracker, YOLOAPITracker
+from .deblurrer import Deblurrer, _get_deblurrer
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def _tracks_to_json(tracks: list[Tracklet]) -> str | None:
     return json.dumps([t.model_dump() for t in tracks], ensure_ascii=False)
 
 
-def _run_ocr_on_segment(seg: Segment) -> str:
+def _run_ocr_on_segment(seg: Segment, frames_override: list[Any] | None = None) -> str:
     """Extract text from segment frames using Tesseract OCR."""
     parts: list[str] = []
     try:
@@ -77,7 +78,8 @@ def _run_ocr_on_segment(seg: Segment) -> str:
         logger.warning("pytesseract not installed, skipping OCR")
         return ""
 
-    for i, (frame, t) in enumerate(zip(seg.frames, seg.frame_times)):
+    frames = frames_override if frames_override is not None else seg.frames
+    for i, (frame, t) in enumerate(zip(frames, seg.frame_times)):
         if frame is None or not isinstance(frame, np.ndarray):
             continue
         try:
@@ -160,6 +162,8 @@ def run_video_pipeline(
     log_vlm_outcome: bool = False,
     log_vlm_outcome_sample_every: int = 1,
     log_vlm_review_file: bool = False,
+    deblurrer: Deblurrer | None = None,
+    deblurrer_name: str = "none",
 ) -> dict[str, Any]:
     """
     Ingest MP4: segment → [CV before/parallel] → VLM → chunks → JSONL.
@@ -177,6 +181,7 @@ def run_video_pipeline(
     out_path = Path(out_path)
     vlm = vlm or DummyVLMBackend()
     tracker = tracker or _get_tracker(object_tracker, enable_cv=enable_cv)
+    deblurrer = deblurrer or _get_deblurrer(deblurrer_name)
     v_id = video_id or path.stem
 
     t0 = time.perf_counter()
@@ -190,6 +195,9 @@ def run_video_pipeline(
     seg_elapsed = time.perf_counter() - t0
     logger.info("Segmentation: %d segments in %.2fs", len(segments), seg_elapsed)
 
+    # Deblur frames for each segment (before CV and VLM)
+    deblurred_frames_list = [deblurrer.deblur_frames(seg.frames) for seg in segments]
+
     # Run CV before VLM when enable_cv and cv_before_vlm
     cv_results: list[tuple[list[Tracklet], str | None]] = []
     if enable_cv and cv_before_vlm:
@@ -197,7 +205,7 @@ def run_video_pipeline(
         if cv_parallel:
             with ThreadPoolExecutor(max_workers=min(4, len(segments) or 1)) as ex:
                 futures = {
-                    ex.submit(tracker.tracks_for_segment, seg.frames, seg.frame_times): seg_idx
+                    ex.submit(tracker.tracks_for_segment, deblurred_frames_list[seg_idx], seg.frame_times): seg_idx
                     for seg_idx, seg in enumerate(segments)
                 }
                 results_by_idx: dict[int, tuple[list[Tracklet], str | None]] = {}
@@ -208,8 +216,8 @@ def run_video_pipeline(
                     results_by_idx[seg_idx] = (tracks, tracks_json)
                 cv_results = [results_by_idx[i] for i in range(len(segments))]
         else:
-            for seg in segments:
-                tracks = tracker.tracks_for_segment(seg.frames, seg.frame_times)
+            for seg_idx, seg in enumerate(segments):
+                tracks = tracker.tracks_for_segment(deblurred_frames_list[seg_idx], seg.frame_times)
                 cv_results.append((tracks, _tracks_to_json(tracks)))
         cv_elapsed = time.perf_counter() - cv_start
         logger.info("CV pipeline: %d segments in %.2fs", len(segments), cv_elapsed)
@@ -225,10 +233,11 @@ def run_video_pipeline(
     try:
         with open(out_path, "w", encoding="utf-8") as f:
             for seg_idx, seg in enumerate(segments):
+                frames_to_use = deblurred_frames_list[seg_idx]
                 if enable_cv and cv_before_vlm and cv_results:
                     tracks, tracks_json = cv_results[seg_idx]
                 else:
-                    tracks = tracker.tracks_for_segment(seg.frames, seg.frame_times)
+                    tracks = tracker.tracks_for_segment(frames_to_use, seg.frame_times)
                     tracks_json = _tracks_to_json(tracks)
                 if tracks:
                     logger.info(
@@ -241,7 +250,7 @@ def run_video_pipeline(
                         json.dumps([t.model_dump() for t in tracks], indent=2, ensure_ascii=False),
                     )
 
-                ocr_text = _run_ocr_on_segment(seg) if enable_ocr else None
+                ocr_text = _run_ocr_on_segment(seg, frames_override=frames_to_use) if enable_ocr else None
                 if enable_ocr and ocr_text:
                     logger.info(
                         "OCR output video_id=%s t_start=%.1f t_end=%.1f segment_index=%d\n%s",
@@ -257,7 +266,7 @@ def run_video_pipeline(
                     t_start=seg.t_start,
                     t_end=seg.t_end,
                     frame_times=seg.frame_times,
-                    frames_bgr=seg.frames,
+                    frames_bgr=frames_to_use,
                     mode=mode,
                     tracks=tracks if tracks else None,
                     extra_context=tracks_json,

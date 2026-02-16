@@ -80,7 +80,7 @@ frontend/             React SPA (Vite + TypeScript + Tailwind)
     components/       Layout, ErrorModal, VideoTranscription
 
 worker/               ARQ job handlers (transcription, ingestion, video analysis)
-  video_ingest/       Video segmentation + VLM pipeline
+                     CLI: python -m worker file|video|web [args...]
 
 chat-ui/              Standalone chat interface (port 7860)
 migrations/           Numbered SQL migration files

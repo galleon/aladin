@@ -13,6 +13,7 @@ from .schemas import (
 from .video_processor import segment_video
 from .vlm_backend import DummyVLMBackend, VLMBackend
 from .tracker import NoopTracker, Tracker, YOLOTracker, YOLOAPITracker
+from .deblurrer import Deblurrer, NoopDeblurrer, DeblurGANInceptionDeblurrer
 from .video_pipeline import run_video_pipeline
 
 __all__ = [
@@ -30,5 +31,8 @@ __all__ = [
     "Tracker",
     "YOLOTracker",
     "YOLOAPITracker",
+    "Deblurrer",
+    "NoopDeblurrer",
+    "DeblurGANInceptionDeblurrer",
     "run_video_pipeline",
 ]
