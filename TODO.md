@@ -2,33 +2,33 @@
 
 ## High priority
 
-- [ ] **Hardcoded chat-ui URLs** — `localhost:7860` is hardcoded in three frontend files. Make it configurable via `VITE_CHAT_UI_URL` env var.
+- [x] **Hardcoded chat-ui URLs** — `localhost:7860` is hardcoded in three frontend files. Make it configurable via `VITE_CHAT_UI_URL` env var.
   - `frontend/src/pages/AgentDetail.tsx:87`
   - `frontend/src/pages/Agents.tsx:183`
   - `frontend/src/pages/Dashboard.tsx:157`
 
-- [ ] **CORS wildcard** — `backend/app/main.py:55` uses `allow_origins=["*"]`. Restrict to actual frontend origins or make configurable via env var.
+- [x] **CORS wildcard** — `backend/app/main.py:55` uses `allow_origins=["*"]`. Restrict to actual frontend origins or make configurable via env var (`CORS_ORIGINS`).
 
-- [ ] **Backend pyproject.toml missing dependencies** — Production dependencies are only declared in the Dockerfile `pip install` commands, not in `pyproject.toml`. The project isn't installable as a Python package outside Docker.
+- [x] **Backend pyproject.toml missing dependencies** — Production dependencies are now declared in `pyproject.toml`.
 
-- [ ] **Duplicate migration numbering** — Two migration files share the `001_` prefix: `001_add_metadata_to_conversations.sql` and `001_add_vlm_and_processing_type.sql`. Renumber to establish correct ordering.
+- [x] **Duplicate migration numbering** — Renamed `001_add_vlm_and_processing_type.sql` → `003_add_vlm_and_processing_type.sql`.
 
 ## Medium priority
 
-- [ ] **Commented-out model code** — `backend/app/models.py` has large blocks of commented-out ChatSession (lines 374-387) and RAGCitation (lines 478-483) models. Clean up or move to a migration plan doc.
+- [x] **Commented-out model code** — Removed commented-out ChatSession (lines 374-387), alias (line 414), and RAGCitation (lines 478-483) from `backend/app/models.py`.
 
-- [ ] **Incomplete routers __init__.py** — `backend/app/routers/__init__.py` only exports 4 of 10 routers. Either export all or remove the file (main.py imports directly anyway).
+- [x] **Incomplete routers __init__.py** — `backend/app/routers/__init__.py` now exports all 10 routers.
 
-- [ ] **console.log statements in chat-ui** — `chat-ui/src/` has ~20+ debug console.log calls across `store.ts`, `ChatView.tsx`, and `TranslationView.tsx`. Strip before release.
+- [x] **console.log statements in chat-ui** — Removed all debug console.log calls from `store.ts`, `ChatView.tsx`, and `TranslationView.tsx`.
 
-- [ ] **Duplicate worker Dockerfile** — Both `worker.Dockerfile` (root, used by docker-compose) and `worker/worker/Dockerfile` exist with overlapping purpose. Consolidate or clarify which is canonical.
+- [x] **Duplicate worker Dockerfile** — Added clarifying comments to both `worker.Dockerfile` (root, canonical for docker-compose) and `worker/worker/Dockerfile` (standalone).
 
-- [ ] **Config duplication** — `backend/app/config.py` and `worker/shared/config.py` define overlapping settings independently. Consider sharing or documenting the divergence.
+- [x] **Config duplication** — Added comment in `worker/shared/config.py` explaining it's intentionally separate from `backend/app/config.py`.
 
 ## Low priority
 
-- [ ] **TODO comment** — `backend/app/routers/conversations.py:57` — `feedback=None, # TODO: Load feedback if needed`
+- [x] **TODO comment** — `backend/app/routers/conversations.py:57` — Now loads feedback from the message relationship.
 
-- [ ] **Hardcoded `spark-9965` hostname** — `docker-compose.yml` and `env.local.template` reference a machine-specific hostname (`spark-9965.local`). Replace with a generic placeholder or document that users must change it.
+- [x] **Hardcoded `spark-9965` hostname** — Replaced with generic `llm-host` placeholder in `docker-compose.yml` and `env.local.template`.
 
-- [ ] **`datetime.utcnow()` deprecation** — `backend/app/services/auth.py:40,42` uses `datetime.utcnow()` which is deprecated in Python 3.12+. Use `datetime.now(timezone.utc)` instead.
+- [x] **`datetime.utcnow()` deprecation** — Replaced with `datetime.now(timezone.utc)` in `backend/app/services/auth.py`, `backend/app/models.py`, and `backend/app/routers/conversations.py`.

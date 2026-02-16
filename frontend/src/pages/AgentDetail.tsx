@@ -84,7 +84,7 @@ export default function AgentDetail() {
                     </div>
                     {agent.agent_type !== 'video_transcription' && (
                         <a
-                            href={`http://localhost:7860?agent_id=${agent.id}`}
+                            href={`${import.meta.env.VITE_CHAT_UI_URL || 'http://localhost:7860'}?agent_id=${agent.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all"

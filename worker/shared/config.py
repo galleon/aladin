@@ -1,5 +1,11 @@
 """
 Shared configuration for ingestion services.
+
+NOTE: This config is intentionally separate from backend/app/config.py.
+The worker runs in a different container/runtime and has worker-specific
+settings (e.g. DOCLING_*, YOLO_*, WORKER_CONCURRENCY) that the API server
+does not need. Overlapping settings (DB, Redis, Qdrant, LLM) are read from
+the same environment variables so they stay in sync via docker-compose.
 """
 
 import os
