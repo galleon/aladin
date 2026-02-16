@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authApi, User } from './api/client';
 import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -103,39 +104,41 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 
 function App() {
     return (
-        <QueryClientProvider client={queryClient}>
-            <AuthProvider>
-                <Router>
-                    <Routes>
-                        <Route path="/login" element={<Login />} />
-                        <Route path="/register" element={<Register />} />
-                        <Route
-                            path="/*"
-                            element={
-                                <ProtectedRoute>
-                                    <Layout>
-                                        <Routes>
-                                            <Route path="/" element={<Dashboard />} />
-                                            <Route path="/data-domains" element={<DataDomains />} />
-                                            <Route path="/data-domains/:id" element={<DataDomainDetail />} />
-                                            <Route path="/data-domains/:id/inspect" element={<DataDomainInspect />} />
-                                            <Route path="/agents" element={<Agents />} />
-                                            <Route path="/agents/:id" element={<AgentDetail />} />
-                                            <Route path="/jobs" element={<TranscriptionJobs />} />
-                                            <Route path="/transcription-jobs" element={<Navigate to="/jobs" replace />} />
-                                            <Route path="/conversations" element={<Conversations />} />
-                                            <Route path="/chat/:agentId" element={<Chat />} />
-                                            <Route path="/chat/:agentId/:conversationId" element={<Chat />} />
-                                            <Route path="/translate/:agentId" element={<TranslationChat />} />
-                                        </Routes>
-                                    </Layout>
-                                </ProtectedRoute>
-                            }
-                        />
-                    </Routes>
-                </Router>
-            </AuthProvider>
-        </QueryClientProvider>
+        <ErrorBoundary>
+            <QueryClientProvider client={queryClient}>
+                <AuthProvider>
+                    <Router>
+                        <Routes>
+                            <Route path="/login" element={<Login />} />
+                            <Route path="/register" element={<Register />} />
+                            <Route
+                                path="/*"
+                                element={
+                                    <ProtectedRoute>
+                                        <Layout>
+                                            <Routes>
+                                                <Route path="/" element={<Dashboard />} />
+                                                <Route path="/data-domains" element={<DataDomains />} />
+                                                <Route path="/data-domains/:id" element={<DataDomainDetail />} />
+                                                <Route path="/data-domains/:id/inspect" element={<DataDomainInspect />} />
+                                                <Route path="/agents" element={<Agents />} />
+                                                <Route path="/agents/:id" element={<AgentDetail />} />
+                                                <Route path="/jobs" element={<TranscriptionJobs />} />
+                                                <Route path="/transcription-jobs" element={<Navigate to="/jobs" replace />} />
+                                                <Route path="/conversations" element={<Conversations />} />
+                                                <Route path="/chat/:agentId" element={<Chat />} />
+                                                <Route path="/chat/:agentId/:conversationId" element={<Chat />} />
+                                                <Route path="/translate/:agentId" element={<TranslationChat />} />
+                                            </Routes>
+                                        </Layout>
+                                    </ProtectedRoute>
+                                }
+                            />
+                        </Routes>
+                    </Router>
+                </AuthProvider>
+            </QueryClientProvider>
+        </ErrorBoundary>
     );
 }
 

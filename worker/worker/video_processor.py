@@ -165,10 +165,13 @@ class VideoProcessor:
             vlm = self._get_vlm_backend(vlm_api_base, vlm_api_key, vlm_model_id)
 
             # Create temporary output file for JSONL
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".jsonl", delete=False
-            ) as tmp:
-                tmp_path = tmp.name
+            # We use delete=False because we need to read it after pipeline completes
+            # but ensure cleanup in finally block
+            tmp_file = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".jsonl", delete=False, dir=tempfile.gettempdir()
+            )
+            tmp_path = tmp_file.name
+            tmp_file.close()  # Close file handle so pipeline can write to it
 
             try:
                 # Run video pipeline
@@ -312,6 +315,10 @@ class VideoProcessor:
                     "total_duration_ms": total_duration,
                 }
             finally:
-                # Clean up temp file
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
+                # Clean up temp file - use try/except to ensure we always attempt cleanup
+                try:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                        logger.debug("Cleaned up temp file: %s", tmp_path)
+                except OSError as e:
+                    logger.warning("Failed to remove temp file %s: %s", tmp_path, e)
