@@ -1,37 +1,16 @@
 [project]
-name = "aladin-backend"
+name = "rag-agent-platform"
 version = "1.0.0"
-description = "Backend API for Aladin LLM Platform Management"
+description = "RAG Agent Management Platform"
 requires-python = ">=3.11"
-dependencies = [
-    "fastapi>=0.109.0",
-    "uvicorn[standard]>=0.27.0",
-    "sqlalchemy>=2.0.23",
-    "psycopg2-binary>=2.9.9",
-    "alembic>=1.13.1",
-    "pydantic>=2.5.3",
-    "pydantic-settings>=2.1.0",
-    "kubernetes>=28.1.0",
-    "pyyaml>=6.0.1",
-    "structlog>=24.1.0",
-    "prometheus-client>=0.19.0",
-    "celery>=5.3.4",
-    "redis>=5.0.1",
-    "websockets>=12.0",
-]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["app"]
 
 [tool.uv]
 dev-dependencies = [
-    "pytest>=7.4.4",
-    "pytest-asyncio>=0.23.3",
-    "black>=24.1.1",
-    "ruff>=0.1.11",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "httpx>=0.24",
 ]
 
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

@@ -1,0 +1,30 @@
+# Worker prompt templates. Used by video VLM and file processing.
+# Placeholders: {t_start:.1f}, {t_end:.1f}, {num_frames}, {tracks_json}
+
+video:
+  procedure:
+    id: procedure_v1
+    template: |
+      Analyze this procedure video segment [{t_start:.1f}s–{t_end:.1f}s] using {num_frames} keyframes. For each step, provide:
+      - **action**: what is being done
+      - **tools**: tools/equipment used
+      - **result**: outcome or visible state change
+      - **warnings**: safety or quality cues if any
+      - **visible_cues**: text, labels, or indicators on screen
+      Respond with a structured JSON: { "caption": "...", "events": [...], "entities": [...], "notes": [...] }.
+    tracks_append: "\nOptional tracking context (not required for procedure): {tracks_json}"
+  race:
+    id: race_v1
+    template: |
+      Analyze this race/ traffic video segment [{t_start:.1f}s–{t_end:.1f}s] using {num_frames} keyframes. Provide:
+      - **caption**: scene-level summary
+      - **events**: interactions (e.g. closing gap, overtake attempt, lane change), with per-track references when possible (e.g. 'Car T07', 'Pedestrian P01')
+      - **entities**: vehicles, pedestrians, or other moving objects with stable IDs if known
+      - **notes**: uncertainty when objects are occluded or leave frame
+      Respond with a structured JSON: { "caption": "...", "events": [...], "entities": [...], "notes": [...] }.
+    tracks_append: "\nTrack data (use IDs like T07 in commentary): {tracks_json}"
+    tracks_append_empty: "\nNo track data: use scene-level commentary only."
+  cosmos_reason2_timestamp_instruction: " Make sure the answer contain correct timestamps."
+
+file:
+  docling_convert: "Convert this page to docling."

@@ -12,8 +12,10 @@ COPY vite.config.ts ./
 COPY tailwind.config.js ./
 COPY postcss.config.js ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies (longer timeout and retries for flaky networks)
+RUN npm config set fetch-timeout 120000 && \
+    npm config set fetch-retries 5 && \
+    npm install
 
 # Copy source code
 COPY index.html ./
