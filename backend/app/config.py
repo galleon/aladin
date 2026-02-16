@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "RAG Agent Platform"
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     CORS_ORIGINS: list[str] = (
         os.getenv("CORS_ORIGINS", "*").split(",")
         if os.getenv("CORS_ORIGINS")

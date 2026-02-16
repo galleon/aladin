@@ -3,16 +3,63 @@ Web crawling: crawl4ai, URL filtering, table extraction.
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
+import socket
 from typing import List, Set
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
 from shared.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def is_safe_url(url: str) -> bool:
+    """
+    Check if URL is safe to crawl (not SSRF vulnerable).
+    
+    Blocks:
+    - Private IP ranges (10.x, 172.16-31.x, 192.168.x)
+    - Loopback addresses (127.x, ::1)
+    - Link-local addresses (169.254.x)
+    - Cloud metadata endpoints
+    """
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        
+        if not hostname:
+            return False
+            
+        # Block common cloud metadata endpoints
+        metadata_hosts = [
+            "169.254.169.254",  # AWS, GCP, Azure metadata
+            "metadata.google.internal",
+            "metadata",
+        ]
+        if hostname.lower() in metadata_hosts:
+            return False
+        
+        # Resolve hostname to IP
+        try:
+            ip_str = socket.gethostbyname(hostname)
+            ip = ipaddress.ip_address(ip_str)
+            
+            # Block private/loopback/link-local addresses
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return False
+                
+        except (socket.gaierror, ValueError):
+            # If we can't resolve, block it for safety
+            return False
+            
+        return True
+    except Exception as e:
+        logger.warning("Failed to validate URL %s: %s", url, e)
+        return False
 
 
 def url_matches_pattern(url: str, pattern: str) -> bool:
@@ -85,6 +132,11 @@ async def crawl_pages(
     Returns:
         List of page data dicts with url, depth, title, markdown, html, links, tables.
     """
+    # Validate start URL for SSRF
+    if not is_safe_url(start_url):
+        logger.error("Rejected unsafe start URL: %s", start_url)
+        raise ValueError(f"Unsafe URL rejected: {start_url}")
+    
     pages = []
     visited: Set[str] = set()
     queue = [(start_url, 0)]
@@ -110,6 +162,10 @@ async def crawl_pages(
             if url in visited or depth > depth_limit:
                 continue
             if not matches_patterns(url, inclusion_patterns, exclusion_patterns):
+                continue
+            # Validate URL for SSRF before crawling
+            if not is_safe_url(url):
+                logger.warning("Skipping unsafe URL: %s", url)
                 continue
 
             visited.add(url)
@@ -144,15 +200,6 @@ async def crawl_pages(
                                     queue.append((absolute_url, depth + 1))
                 else:
                     logger.warning("Failed to crawl %s: %s", url, result.error_message)
-            except Exception as e:
-                logger.error("Error crawling %s: %s", url, e)
-
-    return pages
-                        link_url = link.get("href", "") if isinstance(link, dict) else str(link)
-                        if link_url:
-                            absolute_url = urljoin(url, link_url)
-                            if absolute_url not in visited:
-                                queue.append((absolute_url, depth + 1))
             except Exception as e:
                 logger.error("Error crawling %s: %s", url, e)
 
