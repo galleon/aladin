@@ -154,7 +154,7 @@ export default function Dashboard() {
               return (
               <a
                 key={agent.id}
-                href={`http://localhost:7860?agent_id=${agent.id}`}
+                href={`${import.meta.env.VITE_CHAT_UI_URL || 'http://localhost:7860'}?agent_id=${agent.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-start gap-4 p-4 bg-slate-800/30 rounded-xl border border-slate-700/30 hover:border-violet-500/30 transition-all group"

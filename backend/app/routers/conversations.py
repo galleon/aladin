@@ -10,12 +10,12 @@ from ..schemas import (
     ConversationUpdate,
     ConversationResponse,
     ConversationListResponse,
+    FeedbackResponse,
     MessageResponse,
     ChatRequest,
     ChatResponse,
     FeedbackCreate,
     FeedbackUpdate,
-    FeedbackResponse,
     SourceReference,
 )
 from ..services.auth import get_current_active_user
@@ -54,7 +54,18 @@ def _conversation_to_response(
                     input_tokens=msg.input_tokens,
                     output_tokens=msg.output_tokens,
                     created_at=msg.created_at,
-                    feedback=None,  # TODO: Load feedback if needed
+                    feedback=FeedbackResponse(
+                        id=msg.feedback.id,
+                        message_id=str(msg.feedback.message_id),
+                        rating_type=msg.feedback.rating_type,
+                        score=msg.feedback.score,
+                        thumbs_up=msg.feedback.thumbs_up,
+                        tags=msg.feedback.tags or [],
+                        comment=msg.feedback.comment,
+                        user_id=msg.feedback.user_id,
+                        created_at=msg.feedback.created_at,
+                        updated_at=msg.feedback.updated_at,
+                    ) if msg.feedback else None,
                     child_messages=[],
                     citations=[],
                     translation_metadata=None,
@@ -568,9 +579,9 @@ async def chat(
     db.add(assistant_message)
 
     # Update conversation timestamp
-    from datetime import datetime
+    from datetime import datetime, timezone
 
-    conversation.updated_at = datetime.utcnow()
+    conversation.updated_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(assistant_message)

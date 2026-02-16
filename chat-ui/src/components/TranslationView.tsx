@@ -42,11 +42,9 @@ export default function TranslationView() {
   useEffect(() => {
     api.get('/translation/languages')
       .then(res => {
-        console.log('Languages response:', res.data)
         setLanguages(res.data.languages || {})
       })
-      .catch(err => {
-        console.error('Failed to fetch languages:', err)
+      .catch(() => {
         // Fallback to default languages if API fails
         setLanguages({
           en: 'English',
@@ -93,7 +91,7 @@ export default function TranslationView() {
             jobsPollInterval.current = window.setInterval(fetchJobs, 10000)
           }
         })
-        .catch(err => console.error('Failed to fetch jobs:', err))
+        .catch(() => {})
     }
 
     fetchJobs()
@@ -126,7 +124,6 @@ export default function TranslationView() {
       })
       setTranslatedText(res.data.translated_text)
     } catch (err: any) {
-      console.error('Translation failed:', err)
       const errorDetail = err.response?.data?.detail || err.message
       // Show user-friendly error message
       setTranslatedText(`Error: ${errorDetail}`)
@@ -160,7 +157,6 @@ export default function TranslationView() {
       setSelectedFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (err: any) {
-      console.error('File upload failed:', err)
       const errorDetail = err.response?.data?.detail || err.message
       alert(`Upload failed: ${errorDetail}`)
     } finally {
@@ -178,8 +174,8 @@ export default function TranslationView() {
       document.body.appendChild(link)
       link.click()
       link.remove()
-    } catch (err) {
-      console.error('Download failed:', err)
+    } catch {
+      // Download failed silently
     }
   }
 

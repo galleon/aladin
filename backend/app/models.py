@@ -1,7 +1,7 @@
 """Database models for RAG Agent Management Platform."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from sqlalchemy import (
     Column,
@@ -77,8 +77,8 @@ class User(Base):
     full_name = Column(String(255))
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     data_domains = relationship("DataDomain", back_populates="owner")
@@ -100,8 +100,8 @@ class DataDomain(Base):
     embedding_model = Column(String(255), nullable=False)
     qdrant_collection = Column(String(255), unique=True, nullable=False)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # VLM configuration for video processing (optional, falls back to global settings)
     vlm_api_base = Column(String(512), nullable=True)
@@ -137,8 +137,8 @@ class Document(Base):
     error_message = Column(Text)
     processing_type = Column(String(50), default="document")  # "document" or "video"
     data_domain_id = Column(Integer, ForeignKey("data_domains.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     data_domain = relationship("DataDomain", back_populates="documents")
@@ -186,8 +186,8 @@ class Agent(Base):
 
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     is_public = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Unique constraint: each owner can only have one agent with a given name
     __table_args__ = (
@@ -249,8 +249,8 @@ class Job(Base):
     progress = Column(Integer, default=0)  # 0-100
     error_message = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
 
     # Relationships
@@ -327,8 +327,8 @@ class TranslationJob(Base):
     output_tokens = Column(Integer)
     processing_time_seconds = Column(Float)  # Total processing time in seconds
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime)
 
 
@@ -362,7 +362,7 @@ class TranscriptionJob(Base):
 
     error_message = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
 
     # Relationships
@@ -371,25 +371,9 @@ class TranscriptionJob(Base):
     translation_agent = relationship("Agent", foreign_keys=[translation_agent_id])
 
 
-# Temporarily disable ChatSession until migration - use Conversation for now
-# class ChatSession(Base):
-#     """Chat Session - The container for conversations with permissions and lifecycle management.
-#
-#     NOTE: This model requires database migration. The table will be created
-#     via migration script, not auto-created on startup.
-#     """
-#     __tablename__ = "chat_sessions"
-#     # ... (full definition will be restored after migration)
-
-
-# Temporarily disabled ChatSession until migration - use Conversation for now
-# ChatSession will be re-enabled after database migration
-# All ChatSession fields and relationships are commented out until migration
-
-
-# Conversation model (ChatSession will replace it after migration)
+# Conversation model
 class Conversation(Base):
-    """User conversation with an agent (legacy - will be replaced by ChatSession after migration)."""
+    """User conversation with an agent."""
 
     __tablename__ = "conversations"
 
@@ -399,8 +383,8 @@ class Conversation(Base):
     )  # OpenAI-compatible metadata: {"topic": "conversation title", ...}
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     user = relationship("User", back_populates="conversations")
@@ -408,10 +392,6 @@ class Conversation(Base):
     messages = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"
     )
-
-
-# Alias for backward compatibility (use Conversation for now)
-# ChatSession = Conversation  # Temporarily disabled to prevent SQLAlchemy resolution issues
 
 
 class Message(Base):
@@ -458,7 +438,7 @@ class Message(Base):
     input_tokens = Column(Integer)
     output_tokens = Column(Integer)
 
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
@@ -473,14 +453,6 @@ class Message(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
-
-
-# Temporarily disable RAGCitation until migration - prevents foreign key conflicts
-# Will be re-enabled after database migration to chat_sessions/messages
-# class RAGCitation(Base):
-#     """RAG Citation - Links an AI message to specific source document chunks."""
-#     __tablename__ = "rag_citations"
-#     # Full definition will be restored after migration
 
 
 class Feedback(Base):
@@ -519,8 +491,8 @@ class Feedback(Base):
     # User who provided feedback
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     message = relationship("Message", back_populates="feedback")

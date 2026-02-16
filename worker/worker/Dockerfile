@@ -1,3 +1,6 @@
+# Standalone ingestion worker Dockerfile — for running the worker independently of docker-compose.
+# The canonical docker-compose worker uses worker.Dockerfile at the repository root instead.
+#
 # Ingestion Worker Dockerfile
 FROM python:3.11-slim
 

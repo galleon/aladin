@@ -45,8 +45,8 @@ export default function ChatView() {
                 try {
                     const res = await getConversations(selectedAgent.id)
                     setConversations(res.data || [])
-                } catch (e) {
-                    console.error('Error loading conversations:', e)
+                } catch {
+                    // Failed to load conversations
                 }
             }
             loadConversations()
@@ -56,21 +56,13 @@ export default function ChatView() {
     }, [selectedAgent?.id]) // Only re-run when agent ID changes
 
     const handleSelectAgent = async (agent: typeof agents[0]) => {
-        console.log('=== SELECTING AGENT ===', agent.name, agent.id)
         selectAgent(agent)
         setShowAgents(false)
         try {
-            console.log('Fetching conversations for agent:', agent.id)
             const res = await getConversations(agent.id)
-            console.log('Conversations API response:', res.data)
-            console.log('Number of conversations received:', res.data?.length || 0)
-            if (res.data && res.data.length > 0) {
-                console.log('First conversation sample:', res.data[0])
-            }
             setConversations(res.data || [])
-            console.log('Conversations set in store, count:', res.data?.length || 0)
-        } catch (e) {
-            console.error('Error loading conversations:', e)
+        } catch {
+            // Failed to load conversations
         }
     }
 
@@ -86,8 +78,8 @@ export default function ChatView() {
             try {
                 const res = await getConversation(conv.id)
                 setMessages(res.data.messages || [])
-            } catch (e) {
-                console.error(e)
+            } catch {
+                // Failed to load conversation messages
             }
         } else {
             // Same conversation, just update the reference
@@ -99,39 +91,24 @@ export default function ChatView() {
         if (!input.trim() || !selectedAgent || isLoading) return
 
         const userMessage = input.trim()
-        console.log('=== HANDLE SEND START ===', { userMessage, selectedAgent: selectedAgent?.name, selectedConversation: selectedConversation?.id })
         setInput('')
 
-        console.log('Adding user message to UI')
         addMessage({ role: 'user', content: userMessage })
-        console.log('Adding placeholder assistant message')
         addMessage({ role: 'assistant', content: '...' })
-        console.log('Messages after adding:', messages.length, 'messages')
         setLoading(true)
 
         try {
             let convId: number = selectedConversation?.id ?? 0
-            console.log('Current conversation ID:', convId)
             if (!convId) {
-                console.log('No conversation ID, creating new conversation')
                 const res = await createConversation(selectedAgent.id)
                 convId = res.data.id
-                console.log('Created new conversation:', convId)
                 selectConversation(res.data)
                 setConversations([res.data, ...conversations])
             }
 
-            console.log('Calling chat API with conversation:', convId, 'message:', userMessage)
             const res = await chat(convId, userMessage)
-            console.log('Chat API response received:', {
-                messageId: res.data.message?.id,
-                messageContent: res.data.message?.content?.substring(0, 100),
-                sourcesCount: res.data.sources?.length,
-                conversation_title: res.data.conversation_title
-            })
             const { message, sources, conversation_title } = res.data
 
-            console.log('Updating last message with content:', message.content?.substring(0, 100))
             // Get messages from store to ensure we have the latest state
             // We need to update the last message with the response
             // Since we can't use functional updates, we'll use updateLastMessage first, then setMessages
@@ -145,15 +122,12 @@ export default function ChatView() {
                 // But messages might be stale, so we'll construct the updated array manually
                 // The messages should have been updated by updateLastMessage above
                 setMessages((prev: typeof messages) => {
-                    console.log('Current messages in setMessages callback:', prev.length, 'messages')
                     const updatedMessages = prev.map((m: typeof messages[0], i: number) => {
                         if (i === prev.length - 1) {
-                            console.log('Updating last message with ID and sources:', message.id, sources?.length)
                             return { ...m, id: message.id, sources }
                         }
                         return m
                     })
-                    console.log('Setting updated messages:', updatedMessages.length, 'messages')
                     return updatedMessages
                 })
             }, 0)
@@ -163,8 +137,6 @@ export default function ChatView() {
             let updatedConvs: typeof conversations = conversations
 
             if (conversation_title !== undefined && conversation_title !== null) {
-                console.log('Updating conversation title:', conversation_title, 'for conversation:', convId)
-
                 // Update in conversations list (always do this)
                 // Check if conversation exists in list, if not add it
                 const convExists = conversations.some((c: typeof conversations[0]) => {
@@ -203,14 +175,10 @@ export default function ChatView() {
                     return cId === convId
                 })
                 if (currentConv) {
-                    console.log('Final check: ensuring conversation is selected:', currentConv.id, 'current selected:', selectedConversation?.id)
                     // Use setTimeout to ensure state updates are processed
                     setTimeout(() => {
                         selectConversation(currentConv)
-                        console.log('Conversation selected after timeout:', currentConv.id)
                     }, 0)
-                } else {
-                    console.log('Conversation not found in updated list:', convId, 'available conversations:', updatedConvs.map(c => c.id))
                 }
             }
         } catch (e: any) {
@@ -223,8 +191,8 @@ export default function ChatView() {
     const handleFeedback = async (messageId: number, isPositive: boolean) => {
         try {
             await submitFeedback(messageId, isPositive)
-        } catch (e) {
-            console.error(e)
+        } catch {
+            // Failed to submit feedback
         }
     }
 
@@ -566,10 +534,7 @@ export default function ChatView() {
                         </div>
                     ) : (
                         (() => {
-                            console.log('Rendering messages:', messages.length, 'messages', messages)
-                            return messages.map((msg, idx) => {
-                                console.log('Rendering message', idx, ':', { role: msg.role, content: msg.content?.substring(0, 50), id: msg.id })
-                                return (
+                            return messages.map((msg, idx) => (
                                     <div
                                         key={idx}
                                         className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}
@@ -664,8 +629,7 @@ export default function ChatView() {
                                             )}
                                         </div>
                                     </div>
-                                )
-                            })
+                                ))
                         })()
                     )}
                     <div ref={messagesEndRef} />

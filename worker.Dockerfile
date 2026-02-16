@@ -1,3 +1,7 @@
+# Canonical worker Dockerfile — used by docker-compose (docker-compose.yml → worker service).
+# Builds backend app + pipeline code and runs the ARQ unified worker.
+# For the standalone worker image (without backend app), see worker/worker/Dockerfile.
+#
 # Unified Worker image: ARQ worker (transcription + ingestion).
 # Builds backend app + pipeline code and installs worker-only deps (crawl4ai, docling, opencv).
 # Backend API uses backend/Dockerfile (no crawl4ai/docling/opencv).

@@ -116,15 +116,10 @@ export const useStore = create<AppState>()(
             selectedConversation: null,
             setConversations: (conversationsOrUpdater) => {
                 if (typeof conversationsOrUpdater === 'function') {
-                    // Functional update
-                    set((state) => {
-                        const newConversations = conversationsOrUpdater(state.conversations)
-                        console.log('Store: setConversations (functional) called, updating from', state.conversations.length, 'to', newConversations.length, 'conversations')
-                        return { conversations: newConversations }
-                    })
+                    set((state) => ({
+                        conversations: conversationsOrUpdater(state.conversations),
+                    }))
                 } else {
-                    // Direct update
-                    console.log('Store: setConversations called with', conversationsOrUpdater.length, 'conversations')
                     set({ conversations: conversationsOrUpdater })
                 }
             },
@@ -134,35 +129,24 @@ export const useStore = create<AppState>()(
             messages: [],
             setMessages: (messagesOrUpdater: Message[] | ((prev: Message[]) => Message[])) => {
                 if (typeof messagesOrUpdater === 'function') {
-                    // Functional update
-                    set((state) => {
-                        const newMessages = messagesOrUpdater(state.messages)
-                        console.log('Store: setMessages (functional) called, updating from', state.messages.length, 'to', newMessages.length, 'messages')
-                        return { messages: newMessages }
-                    })
+                    set((state) => ({
+                        messages: messagesOrUpdater(state.messages),
+                    }))
                 } else {
-                    // Direct update
-                    console.log('Store: setMessages called with', messagesOrUpdater.length, 'messages')
                     set({ messages: messagesOrUpdater })
                 }
             },
             addMessage: (msg) => {
-                console.log('Store: addMessage called with', msg.role, 'message:', msg.content?.substring(0, 50))
-                set((state) => {
-                    const newMessages = [...state.messages, msg]
-                    console.log('Store: messages after addMessage:', newMessages.length, 'messages')
-                    return { messages: newMessages }
-                })
+                set((state) => ({
+                    messages: [...state.messages, msg],
+                }))
             },
             updateLastMessage: (content) => {
-                console.log('Store: updateLastMessage called with content:', content?.substring(0, 100))
-                set((state) => {
-                    const updated = state.messages.map((m, i) =>
+                set((state) => ({
+                    messages: state.messages.map((m, i) =>
                         i === state.messages.length - 1 ? { ...m, content } : m
-                    )
-                    console.log('Store: messages after updateLastMessage:', updated.length, 'messages')
-                    return { messages: updated }
-                })
+                    ),
+                }))
             },
 
             // Data Domains
@@ -179,4 +163,3 @@ export const useStore = create<AppState>()(
         }
     )
 )
-

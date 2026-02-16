@@ -180,7 +180,8 @@ export default function Agents() {
 
     const getChatLink = (agent: { id: number; agent_type: AgentType }) => {
         // For both RAG and translation agents, open chat UI with agent selected
-        return `http://localhost:7860?agent_id=${agent.id}`;
+        const chatUiUrl = import.meta.env.VITE_CHAT_UI_URL || 'http://localhost:7860';
+        return `${chatUiUrl}?agent_id=${agent.id}`;
     };
 
     return (
