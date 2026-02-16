@@ -558,9 +558,10 @@ async def chat(
         )
     except Exception as e:
         logger.error("RAG query failed", error=str(e), conversation_id=conversation_id)
+        # Don't expose internal error details to client
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate response: {str(e)}",
+            detail="Failed to generate response. Please try again or contact support.",
         )
 
     # Save assistant message

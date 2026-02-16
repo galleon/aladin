@@ -7,6 +7,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
+import rehypeSanitize from 'rehype-sanitize'
 import { useStore } from '../store'
 import {
     getConversations, getConversation, createConversation,
@@ -557,7 +558,7 @@ export default function ChatView() {
                                                     <div className="chat-message prose prose-invert prose-sm max-w-none">
                                                         <ReactMarkdown
                                                             remarkPlugins={[remarkGfm]}
-                                                            rehypePlugins={[rehypeHighlight]}
+                                                            rehypePlugins={[rehypeSanitize, rehypeHighlight]}
                                                         >
                                                             {msg.content}
                                                         </ReactMarkdown>

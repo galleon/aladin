@@ -5,6 +5,7 @@ import { useDropzone } from 'react-dropzone';
 import { dataDomainsApi } from '../api/client';
 import ErrorModal from '../components/ErrorModal';
 import ReactMarkdown from 'react-markdown';
+import rehypeSanitize from 'rehype-sanitize';
 import {
     ArrowLeft,
     Upload,
@@ -306,6 +307,7 @@ export default function DataDomainDetail() {
                                 <div className="text-white text-xs max-h-48 overflow-y-auto [&_strong]:text-violet-300 [&_code]:text-violet-200 [&_code]:bg-slate-800 [&_code]:px-1 [&_code]:rounded [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0 [&_ul]:list-disc [&_ul]:pl-4">
                                     {domain.vlm_prompt ? (
                                         <ReactMarkdown
+                                            rehypePlugins={[rehypeSanitize]}
                                             components={{
                                                 p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
                                                 strong: ({ children }) => <strong className="text-violet-300 font-semibold">{children}</strong>,
