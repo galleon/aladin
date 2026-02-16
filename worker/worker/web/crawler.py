@@ -22,9 +22,9 @@ def is_safe_url(url: str) -> bool:
     Check if URL is safe to crawl (not SSRF vulnerable).
     
     Blocks:
-    - Private IP ranges (10.x, 172.16-31.x, 192.168.x)
-    - Loopback addresses (127.x, ::1)
-    - Link-local addresses (169.254.x)
+    - Private IP ranges per RFC 1918 (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+    - Loopback addresses (127.0.0.0/8, ::1)
+    - Link-local addresses (169.254.0.0/16)
     - Cloud metadata endpoints
     """
     try:

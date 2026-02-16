@@ -165,8 +165,8 @@ class VideoProcessor:
             vlm = self._get_vlm_backend(vlm_api_base, vlm_api_key, vlm_model_id)
 
             # Create temporary output file for JSONL
-            # We use delete=False because we need to read it after pipeline completes
-            # but ensure cleanup in finally block
+            # We use delete=False because the video pipeline needs to write to the file
+            # after we close the handle, but we ensure cleanup in the finally block
             tmp_file = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".jsonl", delete=False, dir=tempfile.gettempdir()
             )

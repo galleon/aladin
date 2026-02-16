@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
-from .config import settings
+from .config import settings, DEFAULT_SECRET_KEY
 from .database import engine, Base
 from .routers import (
     auth,
@@ -29,8 +29,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting ALADIN Platform")
     
     # Validate SECRET_KEY in non-development environments
-    default_secret = "your-secret-key-change-in-production-min-32-chars"
-    if settings.ENVIRONMENT != "development" and settings.SECRET_KEY == default_secret:
+    if settings.ENVIRONMENT != "development" and settings.SECRET_KEY == DEFAULT_SECRET_KEY:
         error_msg = (
             "SECURITY ERROR: Default SECRET_KEY is being used in a non-development environment. "
             "Please set a strong SECRET_KEY in your environment variables (minimum 32 characters)."

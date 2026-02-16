@@ -118,6 +118,9 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# Default SECRET_KEY value for validation
+DEFAULT_SECRET_KEY = "your-secret-key-change-in-production-min-32-chars"
+
 # Fallback prompt templates when VIDEO_PROMPT_LIBRARY_PATH is missing or invalid
 _FALLBACK_PROMPT_LIBRARY = {
     "procedure": "Analyze this procedure video segment [{t_start}s–{t_end}s] using {num_frames} keyframes. "
