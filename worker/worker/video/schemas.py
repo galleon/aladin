@@ -79,7 +79,7 @@ class VideoChunk(BaseModel):
     fields: dict[str, Any] = Field(default_factory=dict, description="Structured VLM output.")
     frame_times: list[float] = Field(default_factory=list, description="Sampled timestamps (s).")
     tracks: list[Tracklet] = Field(default_factory=list, description="Optional track data.")
-    cv_meta: str | None = Field(default=None, description="Serialized CV JSON (bboxes, labels, tracking IDs) for metadata.")
+    cv_meta: str = Field(default="[]", description="Serialized CV JSON (bboxes, labels, tracking IDs). Empty [] when no tracks.")
     hash: str = Field(..., description="Cache key: sha256(video_id, t_start, t_end, sampling, model, prompt).")
 
     model_config = {"arbitrary_types_allowed": True}

@@ -148,12 +148,3 @@ async def crawl_pages(
                 logger.error("Error crawling %s: %s", url, e)
 
     return pages
-                        link_url = link.get("href", "") if isinstance(link, dict) else str(link)
-                        if link_url:
-                            absolute_url = urljoin(url, link_url)
-                            if absolute_url not in visited:
-                                queue.append((absolute_url, depth + 1))
-            except Exception as e:
-                logger.error("Error crawling %s: %s", url, e)
-
-    return pages

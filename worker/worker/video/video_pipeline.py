@@ -63,34 +63,102 @@ def _get_tracker(object_tracker: str | None, enable_cv: bool = False) -> Tracker
     return NoopTracker()
 
 
-def _tracks_to_json(tracks: list[Tracklet]) -> str | None:
-    if not tracks:
-        return None
+def _tracks_to_json(tracks: list[Tracklet]) -> str:
+    """Serialize tracks to JSON. Returns '[]' when empty so cv_meta is always present."""
     return json.dumps([t.model_dump() for t in tracks], ensure_ascii=False)
 
 
-def _run_ocr_on_segment(seg: Segment, frames_override: list[Any] | None = None) -> str:
-    """Extract text from segment frames using Tesseract OCR."""
-    parts: list[str] = []
+_paddle_ocr_instance: Any = None
+
+
+OCR_MODEL_NAME = "PaddleOCR"
+
+
+def _preprocess_for_ocr(frame: np.ndarray) -> np.ndarray:
+    """Preprocess frame to improve OCR detection: upscale, CLAHE contrast."""
+    from shared.config import settings
+
+    img = frame.copy()
+    h, w = img.shape[:2]
+
+    # Upscale small frames (video overlays often have small text)
+    factor = getattr(settings, "OCR_UPSCALE_FACTOR", 2)
+    if factor > 1 and (h < 480 or w < 640):
+        img = cv2.resize(img, (w * factor, h * factor), interpolation=cv2.INTER_CUBIC)
+
+    # CLAHE contrast enhancement (helps faint text)
+    if getattr(settings, "OCR_USE_CLAHE", True):
+        try:
+            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            l = clahe.apply(l)
+            img = cv2.merge([l, a, b])
+            img = cv2.cvtColor(img, cv2.COLOR_LAB2BGR)
+        except Exception as e:
+            logger.debug("CLAHE preprocessing failed: %s", e)
+
+    return img
+
+
+def _get_paddle_ocr():
+    """Lazy-load PaddleOCR (cached). Returns None if not installed."""
+    global _paddle_ocr_instance
+    if _paddle_ocr_instance is not None:
+        return _paddle_ocr_instance
     try:
-        import pytesseract
-    except ImportError:
-        logger.warning("pytesseract not installed, skipping OCR")
+        from paddleocr import PaddleOCR
+        from shared.config import settings
+
+        _paddle_ocr_instance = PaddleOCR(
+            use_angle_cls=False,
+            lang="en",
+            show_log=False,
+            det_db_thresh=getattr(settings, "OCR_DET_DB_THRESH", 0.25),
+            det_db_box_thresh=getattr(settings, "OCR_DET_DB_BOX_THRESH", 0.55),
+            det_limit_side_len=getattr(settings, "OCR_DET_LIMIT_SIDE_LEN", 1920),
+            det_limit_type=getattr(settings, "OCR_DET_LIMIT_TYPE", "max"),
+        )
+        return _paddle_ocr_instance
+    except ImportError as e:
+        logger.warning("PaddleOCR not installed, skipping OCR: %s", e)
+        return None
+
+
+def _run_ocr_on_segment(seg: Segment, frames_override: list[Any] | None = None) -> str:
+    """Extract text from segment frames using PaddleOCR (local mode)."""
+    ocr = _get_paddle_ocr()
+    if ocr is None:
         return ""
 
+    parts: list[str] = []
     frames = frames_override if frames_override is not None else seg.frames
     for i, (frame, t) in enumerate(zip(frames, seg.frame_times)):
         if frame is None or not isinstance(frame, np.ndarray):
             continue
         try:
-            # BGR to RGB for pytesseract
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            text = pytesseract.image_to_string(rgb).strip()
-            if text:
-                parts.append(f"[t={t:.1f}s] {text}")
+            preprocessed = _preprocess_for_ocr(frame)
+            rgb = cv2.cvtColor(preprocessed, cv2.COLOR_BGR2RGB)
+            result = ocr.ocr(rgb, cls=False)
+            text_parts: list[str] = []
+            if result and len(result) > 0 and result[0]:
+                for line in result[0]:
+                    if line and len(line) >= 2:
+                        text_parts.append(str(line[1][0]).strip())
+            text = " ".join(text_parts).strip() if text_parts else ""
+            parts.append(f"[t={t:.1f}s] {text}" if text else f"[t={t:.1f}s] (none)")
         except Exception as e:
             logger.debug("OCR failed for frame %d: %s", i, e)
+            parts.append(f"[t={t:.1f}s] (error: {e})")
     return "\n".join(parts) if parts else ""
+
+
+def _ocr_text_for_embedding(ocr_text: str) -> str:
+    """Filter OCR output to only include lines where text was detected."""
+    if not ocr_text:
+        return ""
+    lines = [l for l in ocr_text.split("\n") if "(none)" not in l and "(error:" not in l]
+    return "\n".join(lines) if lines else ""
 
 
 def _assemble_chunk(
@@ -106,7 +174,7 @@ def _assemble_chunk(
         vlm_out.get("events", []),
         vlm_out.get("entities", []),
         None,  # transcript_slice stub
-        ocr_text=ocr_text or None,
+        ocr_text=_ocr_text_for_embedding(ocr_text) if ocr_text else None,
     )
     h = build_chunk_hash(
         seg.video_id,
@@ -127,6 +195,83 @@ def _assemble_chunk(
         tracks=tracks,
         cv_meta=cv_meta,
         hash=h,
+    )
+
+
+def _detections_for_frame(
+    frame_t: float,
+    tracks: list[Tracklet],
+    tolerance_sec: float = 0.05,
+) -> list[dict[str, Any]]:
+    """Extract detections at a given frame timestamp from tracklets."""
+    detections: list[dict[str, Any]] = []
+    for tr in tracks:
+        for bbox in tr.bboxes:
+            if abs(bbox.t - frame_t) <= tolerance_sec:
+                detections.append({
+                    "track_id": tr.track_id,
+                    "label": tr.label,
+                    "bbox": {"x": bbox.x, "y": bbox.y, "w": bbox.w, "h": bbox.h},
+                })
+                break
+    return detections
+
+
+def _draw_detections_on_frame(frame: np.ndarray, detections: list[dict[str, Any]]) -> np.ndarray:
+    """Draw bounding boxes and labels on a copy of the frame. Returns annotated image."""
+    img = frame.copy()
+    for det in detections:
+        bbox = det.get("bbox", {})
+        x, y = bbox.get("x", 0), bbox.get("y", 0)
+        w, h = bbox.get("w", 0), bbox.get("h", 0)
+        label = det.get("label") or det.get("track_id", "?")
+        cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        (tw, th), _ = cv2.getTextSize(str(label), cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+        cv2.rectangle(img, (x, y - th - 8), (x + tw + 4, y), (0, 255, 0), -1)
+        cv2.putText(img, str(label), (x + 2, y - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+    return img
+
+
+def _write_cv_debug_output(
+    debug_dir: Path,
+    video_id: str,
+    model_name: str,
+    seg_idx: int,
+    frames: list[Any],
+    frame_times: list[float],
+    tracks: list[Tracklet],
+) -> None:
+    """Write per-frame images and detections JSON to disk for CV pipeline debug."""
+    seg_dir = debug_dir / f"{video_id}_{model_name}" / f"seg_{seg_idx:04d}"
+    seg_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(
+        "CV debug: writing %d frames to %s",
+        len(frames),
+        seg_dir,
+    )
+    for i, (frame, t_sec) in enumerate(zip(frames, frame_times)):
+        if frame is None or not isinstance(frame, np.ndarray):
+            continue
+        img_path = seg_dir / f"frame_{i:04d}_t{t_sec:.2f}s.png"
+        cv2.imwrite(str(img_path), frame)
+        detections = _detections_for_frame(t_sec, tracks)
+        det_path = seg_dir / f"frame_{i:04d}_t{t_sec:.2f}s_detections.json"
+        with open(det_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {"t": t_sec, "frame_idx": i, "detections": detections},
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
+        if detections:
+            annotated = _draw_detections_on_frame(frame, detections)
+            annotated_path = seg_dir / f"frame_{i:04d}_t{t_sec:.2f}s_boxes.png"
+            cv2.imwrite(str(annotated_path), annotated)
+    logger.debug(
+        "CV debug: wrote segment %d (%d frames) to %s",
+        seg_idx,
+        len([f for f in frames if f is not None]),
+        seg_dir,
     )
 
 
@@ -162,6 +307,7 @@ def run_video_pipeline(
     log_vlm_outcome: bool = False,
     log_vlm_outcome_sample_every: int = 1,
     log_vlm_review_file: bool = False,
+    cv_debug_output_dir: str | Path | None = None,
     deblurrer: Deblurrer | None = None,
     deblurrer_name: str = "none",
 ) -> dict[str, Any]:
@@ -183,6 +329,16 @@ def run_video_pipeline(
     tracker = tracker or _get_tracker(object_tracker, enable_cv=enable_cv)
     deblurrer = deblurrer or _get_deblurrer(deblurrer_name)
     v_id = video_id or path.stem
+    debug_dir = Path(cv_debug_output_dir) if cv_debug_output_dir else None
+
+    logger.info(
+        "CV pipeline config: enable_cv=%s object_tracker=%s cv_before_vlm=%s cv_parallel=%s debug_output=%s",
+        enable_cv,
+        object_tracker,
+        cv_before_vlm,
+        cv_parallel,
+        str(debug_dir) if debug_dir else None,
+    )
 
     t0 = time.perf_counter()
     segments = segment_video(
@@ -199,28 +355,32 @@ def run_video_pipeline(
     deblurred_frames_list = [deblurrer.deblur_frames(seg.frames) for seg in segments]
 
     # Run CV before VLM when enable_cv and cv_before_vlm
-    cv_results: list[tuple[list[Tracklet], str | None]] = []
+    cv_results: list[tuple[list[Tracklet], str]] = []
     if enable_cv and cv_before_vlm:
         cv_start = time.perf_counter()
+        logger.info("CV pipeline: starting tracking on %d segments (parallel=%s)", len(segments), cv_parallel)
         if cv_parallel:
             with ThreadPoolExecutor(max_workers=min(4, len(segments) or 1)) as ex:
                 futures = {
                     ex.submit(tracker.tracks_for_segment, deblurred_frames_list[seg_idx], seg.frame_times): seg_idx
                     for seg_idx, seg in enumerate(segments)
                 }
-                results_by_idx: dict[int, tuple[list[Tracklet], str | None]] = {}
+                results_by_idx: dict[int, tuple[list[Tracklet], str]] = {}
                 for fut in as_completed(futures):
                     seg_idx = futures[fut]
                     tracks = fut.result()
                     tracks_json = _tracks_to_json(tracks)
                     results_by_idx[seg_idx] = (tracks, tracks_json)
+                    logger.debug("CV pipeline: segment %d done, %d tracks", seg_idx, len(tracks))
                 cv_results = [results_by_idx[i] for i in range(len(segments))]
         else:
             for seg_idx, seg in enumerate(segments):
+                logger.debug("CV pipeline: processing segment %d (t=%.1f-%.1fs, %d frames)", seg_idx, seg.t_start, seg.t_end, len(seg.frame_times))
                 tracks = tracker.tracks_for_segment(deblurred_frames_list[seg_idx], seg.frame_times)
                 cv_results.append((tracks, _tracks_to_json(tracks)))
         cv_elapsed = time.perf_counter() - cv_start
-        logger.info("CV pipeline: %d segments in %.2fs", len(segments), cv_elapsed)
+        total_tracks = sum(len(t) for t, _ in cv_results)
+        logger.info("CV pipeline: %d segments in %.2fs, %d total tracks", len(segments), cv_elapsed, total_tracks)
 
     total_frames = 0
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -236,9 +396,22 @@ def run_video_pipeline(
                 frames_to_use = deblurred_frames_list[seg_idx]
                 if enable_cv and cv_before_vlm and cv_results:
                     tracks, tracks_json = cv_results[seg_idx]
+                    logger.debug("CV pipeline: segment %d using pre-computed tracks (%d)", seg_idx, len(tracks))
                 else:
+                    logger.debug("CV pipeline: segment %d running tracker (%d frames)", seg_idx, len(frames_to_use))
                     tracks = tracker.tracks_for_segment(frames_to_use, seg.frame_times)
                     tracks_json = _tracks_to_json(tracks)
+                if debug_dir:
+                    model_name = getattr(tracker, "model_name", "unknown")
+                    _write_cv_debug_output(
+                        debug_dir,
+                        v_id,
+                        model_name,
+                        seg_idx,
+                        frames_to_use,
+                        seg.frame_times,
+                        tracks,
+                    )
                 if tracks:
                     logger.info(
                         "Tracking output video_id=%s t_start=%.1f t_end=%.1f segment_index=%d num_tracks=%d\n%s",
@@ -260,6 +433,23 @@ def run_video_pipeline(
                         seg_idx,
                         ocr_text,
                     )
+                if debug_dir and enable_ocr:
+                    model_name = getattr(tracker, "model_name", "unknown")
+                    seg_dir = debug_dir / f"{v_id}_{model_name}" / f"seg_{seg_idx:04d}"
+                    seg_dir.mkdir(parents=True, exist_ok=True)
+                    try:
+                        from shared.config import settings
+                        ocr_opts = (
+                            f"det_limit_side_len={getattr(settings, 'OCR_DET_LIMIT_SIDE_LEN', 1920)}, "
+                            f"det_db_thresh={getattr(settings, 'OCR_DET_DB_THRESH', 0.25)}, "
+                            f"det_db_box_thresh={getattr(settings, 'OCR_DET_DB_BOX_THRESH', 0.55)}, "
+                            f"upscale={getattr(settings, 'OCR_UPSCALE_FACTOR', 2)}, "
+                            f"clahe={getattr(settings, 'OCR_USE_CLAHE', True)}"
+                        )
+                    except Exception:
+                        ocr_opts = ""
+                    ocr_content = f"OCR model: {OCR_MODEL_NAME}\nOCR options: {ocr_opts}\n\n{ocr_text or ''}"
+                    (seg_dir / "ocr_text.txt").write_text(ocr_content, encoding="utf-8")
 
                 vlm_out = vlm.analyze_segment(
                     video_id=seg.video_id,
@@ -269,7 +459,7 @@ def run_video_pipeline(
                     frames_bgr=frames_to_use,
                     mode=mode,
                     tracks=tracks if tracks else None,
-                    extra_context=tracks_json,
+                    extra_context=tracks_json if tracks else None,
                     custom_prompt=vlm_prompt,
                 )
 

@@ -189,6 +189,7 @@ class VideoProcessor:
                     log_vlm_outcome=settings.LOG_VLM_OUTCOME,
                     log_vlm_outcome_sample_every=settings.LOG_VLM_OUTCOME_SAMPLE_EVERY,
                     log_vlm_review_file=settings.LOG_VLM_OUTCOME_REVIEW_FILE,
+                    cv_debug_output_dir=settings.CV_DEBUG_OUTPUT_DIR if settings.LOG_CV_DEBUG else None,
                     deblurrer_name=deblurrer_name or settings.DEBLUR_NAME,
                 )
 
@@ -209,9 +210,8 @@ class VideoProcessor:
                                 "frame_times": chunk_data["frame_times"],
                                 "fields": chunk_data["fields"],
                                 "hash": chunk_data["hash"],
+                                "cv_meta": chunk_data.get("cv_meta", "[]"),
                             }
-                            if chunk_data.get("cv_meta"):
-                                meta["cv_meta"] = chunk_data["cv_meta"]
                             chunks.append({"text": chunk_data["index_text"], "metadata": meta})
                             if settings.LOG_VLM_OUTCOME and (
                                 chunk_idx % settings.LOG_VLM_OUTCOME_SAMPLE_EVERY == 0
