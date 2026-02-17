@@ -558,7 +558,7 @@ export default function ChatView() {
                                                     <div className="chat-message prose prose-invert prose-sm max-w-none">
                                                         <ReactMarkdown
                                                             remarkPlugins={[remarkGfm]}
-                                                            rehypePlugins={[rehypeSanitize, rehypeHighlight]}
+                                                            rehypePlugins={[rehypeHighlight, rehypeSanitize]}
                                                         >
                                                             {msg.content}
                                                         </ReactMarkdown>

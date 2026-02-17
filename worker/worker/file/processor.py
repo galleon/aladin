@@ -148,17 +148,16 @@ class FileProcessor:
             # Validate file_path to prevent path traversal attacks
             from pathlib import Path
             try:
-                # Resolve to absolute path and check it's within UPLOAD_DIR
                 upload_dir = Path(settings.UPLOAD_DIR).resolve()
                 target_path = Path(file_path).resolve()
-                
-                # Ensure the resolved path is within UPLOAD_DIR
-                if not str(target_path).startswith(str(upload_dir)):
+
+                # Use is_relative_to (safe against prefix collisions like
+                # /upload_dir_evil matching /upload_dir)
+                if not target_path.is_relative_to(upload_dir):
                     error_msg = f"Path traversal attempt detected: {file_path}"
                     logger.error(error_msg)
                     raise ValueError(error_msg)
-                
-                # Update file_path to use validated absolute path
+
                 file_path = str(target_path)
             except (ValueError, OSError) as e:
                 logger.error("Invalid file path: %s - %s", file_path, e)
