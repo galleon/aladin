@@ -173,6 +173,18 @@ services:
             LOG_VLM_OUTCOME: ${LOG_VLM_OUTCOME:-false}
             LOG_VLM_OUTCOME_SAMPLE_EVERY: ${LOG_VLM_OUTCOME_SAMPLE_EVERY:-1}
             LOG_VLM_OUTCOME_REVIEW_FILE: ${LOG_VLM_OUTCOME_REVIEW_FILE:-false}
+            # CV pipeline debug: per-frame images + detections JSON at ./jobs/cv_debug on host
+            LOG_CV_DEBUG: ${LOG_CV_DEBUG:-false}
+            CV_DEBUG_OUTPUT_DIR: ${CV_DEBUG_OUTPUT_DIR:-/app/uploads/jobs/cv_debug}
+            # OCR tuning: lower thresh = more sensitive; upscale = help small text; clahe = contrast
+            OCR_DET_DB_THRESH: ${OCR_DET_DB_THRESH:-0.25}
+            OCR_DET_DB_BOX_THRESH: ${OCR_DET_DB_BOX_THRESH:-0.55}
+            OCR_UPSCALE_FACTOR: ${OCR_UPSCALE_FACTOR:-2}
+            OCR_USE_CLAHE: ${OCR_USE_CLAHE:-true}
+            # 1920 = 4K→1080p; 960 = more aggressive downscale (faster, may lose small text)
+            OCR_DET_LIMIT_SIDE_LEN: ${OCR_DET_LIMIT_SIDE_LEN:-1920}
+            # YOLO imgsz: 1280 = better for 4K, 640 = faster (default)
+            CV_IMGSZ: ${CV_IMGSZ:-1280}
             WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
             JOB_TIMEOUT: ${JOB_TIMEOUT:-600}
             CHUNK_SIZE: ${CHUNK_SIZE:-1000}
