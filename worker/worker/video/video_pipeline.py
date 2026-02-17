@@ -459,7 +459,7 @@ def run_video_pipeline(
                     frames_bgr=frames_to_use,
                     mode=mode,
                     tracks=tracks if tracks else None,
-                    extra_context=tracks_json,
+                    extra_context=tracks_json if tracks else None,
                     custom_prompt=vlm_prompt,
                 )
 
