@@ -58,6 +58,8 @@ RUN uv venv /opt/venv && \
     lap>=0.5.12 \
     inference-sdk>=1.0.0 \
     supervision>=0.20.0 \
+    "paddlepaddle>=2.5.0,<3.0" \
+    "paddleocr>=2.7.0,<3.0" \
     opentelemetry-api>=1.22.0 \
     opentelemetry-sdk>=1.22.0 \
     opentelemetry-exporter-otlp-proto-grpc>=1.22.0 \

@@ -107,6 +107,27 @@ class Settings(BaseSettings):
     # When set, write vlm_out to sidecar JSONL file for file-based review
     LOG_VLM_OUTCOME_REVIEW_FILE: bool = os.getenv("LOG_VLM_OUTCOME_REVIEW_FILE", "false").lower() == "true"
 
+    # CV pipeline debug: write per-frame images and detections JSON to disk (visible from host via ./jobs/cv_debug)
+    LOG_CV_DEBUG: bool = os.getenv("LOG_CV_DEBUG", "false").lower() == "true"
+    # Output dir for CV debug; under UPLOAD_DIR/jobs so it's mounted to host ./jobs/cv_debug
+    CV_DEBUG_OUTPUT_DIR: str = os.getenv("CV_DEBUG_OUTPUT_DIR", "/app/uploads/jobs/cv_debug")
+
+    # OCR (PaddleOCR) tuning for video frames
+    # det_db_thresh: PaddleOCR default 0.3; 0.25 = slightly more sensitive for faint text
+    OCR_DET_DB_THRESH: float = float(os.getenv("OCR_DET_DB_THRESH", "0.25"))
+    # det_db_box_thresh: PaddleOCR default 0.6; 0.55 = keep slightly more boxes
+    OCR_DET_DB_BOX_THRESH: float = float(os.getenv("OCR_DET_DB_BOX_THRESH", "0.55"))
+    # det_limit_side_len: max side length before resize; 1920 = 4K→1080p, 960 = more aggressive downscale
+    OCR_DET_LIMIT_SIDE_LEN: int = int(os.getenv("OCR_DET_LIMIT_SIDE_LEN", "1920"))
+    OCR_DET_LIMIT_TYPE: str = os.getenv("OCR_DET_LIMIT_TYPE", "max")
+    # Preprocessing: upscale small frames (h<480 or w<640) before OCR; 1=off, 2=2x
+    OCR_UPSCALE_FACTOR: int = int(os.getenv("OCR_UPSCALE_FACTOR", "2"))
+    # CLAHE contrast enhancement; helps faint text, can add noise on high-contrast images
+    OCR_USE_CLAHE: bool = os.getenv("OCR_USE_CLAHE", "true").lower() == "true"
+
+    # CV/YOLO object detection: imgsz = input size (640 default); 1280 = better for 4K, 640 = faster
+    CV_IMGSZ: int = int(os.getenv("CV_IMGSZ", "1280"))
+
     # Crawling defaults
     DEFAULT_CRAWL_DEPTH: int = int(os.getenv("DEFAULT_CRAWL_DEPTH", "2"))
     DEFAULT_CRAWL_STRATEGY: str = os.getenv("DEFAULT_CRAWL_STRATEGY", "bfs")
