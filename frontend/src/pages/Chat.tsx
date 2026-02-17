@@ -26,7 +26,6 @@ export default function Chat() {
     conversationId ? parseInt(conversationId) : null
   );
   const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
-  const [lastAssistantMessage, setLastAssistantMessage] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -77,10 +76,6 @@ export default function Chat() {
     onSuccess: (data) => {
       if (!currentConversationId) {
         setCurrentConversationId(data.conversation_id);
-      }
-      // Store the last assistant message for TTS
-      if (data.message?.content) {
-        setLastAssistantMessage(data.message.content);
       }
       refetchConversation();
       queryClient.invalidateQueries({ queryKey: ['conversations'] });

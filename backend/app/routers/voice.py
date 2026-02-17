@@ -2,12 +2,9 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 
-from ..database import get_db
 from ..models import User
 from ..schemas import (
-    VoiceTranscribeRequest,
     VoiceTranscribeResponse,
     VoiceTextToSpeechRequest,
 )
@@ -21,18 +18,20 @@ logger = structlog.get_logger()
 
 router = APIRouter(prefix="/voice", tags=["Voice"])
 
+# 25 MB max audio file size (matches OpenAI's Whisper limit)
+MAX_AUDIO_SIZE = 25 * 1024 * 1024
+
 
 @router.post("/transcribe", response_model=VoiceTranscribeResponse)
 async def transcribe_audio(
     file: UploadFile = File(..., description="Audio file to transcribe"),
     language: str | None = None,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """
     Transcribe audio to text using Speech-to-Text API.
-    
-    Supports various audio formats (mp3, mp4, mpeg, mpga, m4a, wav, webm).
+
+    Supports various audio formats (mp3, mp4, mpeg, mpga, m4a, wav, webm, ogg).
     Uses OpenAI-compatible API endpoint configured in STT_API_BASE.
     """
     logger.info(
@@ -52,21 +51,28 @@ async def transcribe_audio(
         "audio/m4a",
         "audio/wav",
         "audio/webm",
+        "audio/ogg",
     }
-    
+
     if file.content_type and file.content_type not in allowed_types:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported audio format: {file.content_type}. Supported: mp3, mp4, mpeg, mpga, m4a, wav, webm",
+            detail=f"Unsupported audio format: {file.content_type}. Supported: mp3, mp4, mpeg, mpga, m4a, wav, webm, ogg",
         )
 
-    # Read audio file
+    # Read audio file with size limit
     audio_content = await file.read()
-    
+
     if len(audio_content) == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Audio file is empty",
+        )
+
+    if len(audio_content) > MAX_AUDIO_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Audio file too large. Maximum size is {MAX_AUDIO_SIZE // (1024 * 1024)}MB.",
         )
 
     # Check if STT is configured
@@ -114,7 +120,7 @@ async def transcribe_audio(
                 )
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Speech-to-Text API error: {response.text}",
+                    detail="Speech-to-Text API returned an error. Please try again.",
                 )
 
             result = response.json()
@@ -137,25 +143,26 @@ async def transcribe_audio(
         logger.error("STT API request failed", error=str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to connect to Speech-to-Text API: {str(e)}",
+            detail="Failed to connect to Speech-to-Text API. Please try again later.",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Transcription failed", error=str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Transcription failed: {str(e)}",
+            detail="Transcription failed. Please try again.",
         )
 
 
 @router.post("/synthesize")
 async def text_to_speech(
     request: VoiceTextToSpeechRequest,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """
     Convert text to speech using Text-to-Speech API.
-    
+
     Returns audio in MP3 format.
     Uses OpenAI-compatible API endpoint configured in TTS_API_BASE.
     """
@@ -210,7 +217,7 @@ async def text_to_speech(
                 )
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Text-to-Speech API error: {response.text}",
+                    detail="Text-to-Speech API returned an error. Please try again.",
                 )
 
             audio_content = response.content
@@ -234,11 +241,13 @@ async def text_to_speech(
         logger.error("TTS API request failed", error=str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to connect to Text-to-Speech API: {str(e)}",
+            detail="Failed to connect to Text-to-Speech API. Please try again later.",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Speech synthesis failed", error=str(e), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Speech synthesis failed: {str(e)}",
+            detail="Speech synthesis failed. Please try again.",
         )

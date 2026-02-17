@@ -681,7 +681,6 @@ export const voiceApi = {
             formData.append('language', language);
         }
         return apiClient.post<VoiceTranscribeResponse>('/voice/transcribe', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
             timeout: 60000, // 60 seconds for transcription
         });
     },

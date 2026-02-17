@@ -723,12 +723,6 @@ class ChatResponse(BaseModel):
 # ============== Voice Schemas ==============
 
 
-class VoiceTranscribeRequest(BaseModel):
-    """Voice transcription request schema."""
-
-    language: str | None = Field(None, description="Language code (e.g., 'en', 'es'). Auto-detect if not provided.")
-
-
 class VoiceTranscribeResponse(BaseModel):
     """Voice transcription response schema."""
 
@@ -739,7 +733,7 @@ class VoiceTranscribeResponse(BaseModel):
 class VoiceTextToSpeechRequest(BaseModel):
     """Text-to-speech request schema."""
 
-    text: str = Field(..., min_length=1, description="Text to convert to speech")
+    text: str = Field(..., min_length=1, max_length=4096, description="Text to convert to speech")
     voice: str = Field("alloy", description="Voice to use (e.g., 'alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer')")
     speed: float = Field(1.0, ge=0.25, le=4.0, description="Speed of speech (0.25 to 4.0)")
 

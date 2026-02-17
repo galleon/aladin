@@ -1,6 +1,6 @@
 /**
  * Voice chat hook with Voice Activity Detection (VAD)
- * 
+ *
  * Features:
  * - Record audio with microphone
  * - Simple VAD using audio level detection
@@ -35,7 +35,7 @@ export function useVoice({
     const audioContextRef = useRef<AudioContext | null>(null);
     const analyserRef = useRef<AnalyserNode | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
-    const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const animationFrameRef = useRef<number | null>(null);
     const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
@@ -62,7 +62,14 @@ export function useVoice({
         setAudioLevel(0);
     }, []);
 
-    # Monitor audio level for VAD
+    // Stop recording — defined before monitorAudioLevel to avoid circular ref
+    const stopRecording = useCallback(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+        }
+    }, []);
+
+    // Monitor audio level for VAD
     const monitorAudioLevel = useCallback(() => {
         if (!analyserRef.current) return;
 
@@ -70,8 +77,10 @@ export function useVoice({
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
         const checkLevel = () => {
+            if (!analyserRef.current) return;
+
             analyser.getByteFrequencyData(dataArray);
-            
+
             // Calculate average audio level
             const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
             setAudioLevel(average);
@@ -85,8 +94,8 @@ export function useVoice({
                     clearTimeout(silenceTimerRef.current);
                     silenceTimerRef.current = null;
                 }
-            } else if (!silenceTimerRef.current && recordingState === 'recording') {
-                // Start silence timer
+            } else if (!silenceTimerRef.current && mediaRecorderRef.current?.state === 'recording') {
+                // Start silence timer — use ref check instead of state to avoid stale closure
                 silenceTimerRef.current = setTimeout(() => {
                     stopRecording();
                 }, vadSilenceDuration);
@@ -96,18 +105,18 @@ export function useVoice({
         };
 
         checkLevel();
-    }, [recordingState, vadThreshold, vadSilenceDuration, stopRecording]);
+    }, [vadThreshold, vadSilenceDuration, stopRecording]);
 
     // Start recording
     const startRecording = useCallback(async () => {
         try {
             // Request microphone access
-            const stream = await navigator.mediaDevices.getUserMedia({ 
+            const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
-                } 
+                }
             });
             streamRef.current = stream;
 
@@ -120,12 +129,9 @@ export function useVoice({
             source.connect(analyser);
             analyserRef.current = analyser;
 
-            // Start monitoring audio level
-            monitorAudioLevel();
-
             // Set up media recorder
             const mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'audio/webm',
+                mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4',
             });
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
@@ -137,8 +143,9 @@ export function useVoice({
             };
 
             mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                
+                const mimeType = mediaRecorder.mimeType || 'audio/webm';
+                const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+
                 // Transcribe audio
                 setRecordingState('processing');
                 try {
@@ -160,6 +167,9 @@ export function useVoice({
 
             mediaRecorder.start();
             setRecordingState('recording');
+
+            // Start monitoring audio level after recorder is set up
+            monitorAudioLevel();
         } catch (error: any) {
             const errorMsg = error.message || 'Failed to access microphone';
             if (onError) {
@@ -169,13 +179,6 @@ export function useVoice({
         }
     }, [monitorAudioLevel, onTranscript, onError, cleanup]);
 
-    // Stop recording
-    const stopRecording = useCallback(() => {
-        if (mediaRecorderRef.current && recordingState === 'recording') {
-            mediaRecorderRef.current.stop();
-        }
-    }, [recordingState]);
-
     // Play text-to-speech
     const speak = useCallback(async (text: string, voice = 'alloy', speed = 1.0) => {
         try {
@@ -183,17 +186,17 @@ export function useVoice({
             const response = await voiceApi.synthesize(text, voice, speed);
             const audioBlob = response.data;
             const audioUrl = URL.createObjectURL(audioBlob);
-            
+
             // Create and play audio
             const audio = new Audio(audioUrl);
             audioElementRef.current = audio;
-            
+
             audio.onended = () => {
                 setIsPlaying(false);
                 URL.revokeObjectURL(audioUrl);
                 audioElementRef.current = null;
             };
-            
+
             audio.onerror = () => {
                 setIsPlaying(false);
                 URL.revokeObjectURL(audioUrl);
@@ -202,7 +205,7 @@ export function useVoice({
                     onError('Failed to play audio');
                 }
             };
-            
+
             await audio.play();
         } catch (error: any) {
             setIsPlaying(false);
