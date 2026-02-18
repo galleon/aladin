@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import tempfile
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -111,6 +112,9 @@ class DocumentTranslationService:
     FONT_SCALE_THRESHOLD = 1.25  # Apply scaling when text expands by 25%
     MIN_FONT_SIZE_PT = 8  # Minimum font size in points
     MAX_SCALE_FACTOR = 0.85  # Maximum reduction (85% of original)
+    
+    # Configuration for translation validation
+    TRANSLATION_COMPLETENESS_THRESHOLD = 0.9  # Warn if less than 90% of translations applied
     
     def __init__(self):
         self._temp_dir = tempfile.mkdtemp(prefix="doc_translate_")
@@ -270,7 +274,6 @@ class DocumentTranslationService:
         """
         from docx import Document
         from docx.shared import Pt
-        import shutil
 
         # Copy original file
         shutil.copy(docx_path, output_path)
@@ -363,7 +366,7 @@ class DocumentTranslationService:
         )
         
         # Warn if significant mismatch
-        if applied_count < total_expected * 0.9:
+        if total_expected > 0 and applied_count < total_expected * self.TRANSLATION_COMPLETENESS_THRESHOLD:
             logger.warning(
                 "Translation injection incomplete",
                 applied=applied_count,
@@ -428,7 +431,6 @@ class DocumentTranslationService:
         """Re-inject translated text into PPTX with font scaling."""
         from pptx import Presentation
         from pptx.util import Pt
-        import shutil
 
         shutil.copy(pptx_path, output_path)
         prs = Presentation(output_path)
@@ -485,7 +487,7 @@ class DocumentTranslationService:
         )
         
         # Warn if significant mismatch
-        if applied_count < total_expected * 0.9:
+        if total_expected > 0 and applied_count < total_expected * self.TRANSLATION_COMPLETENESS_THRESHOLD:
             logger.warning(
                 "Translation injection incomplete",
                 applied=applied_count,
@@ -655,7 +657,8 @@ TRANSLATED SEGMENTS:"""
                     try:
                         # Find the first ] followed by :
                         bracket_close = line.index(']')
-                        if line[bracket_close+1:bracket_close+2] == ':':
+                        # Check if next character is a colon (with bounds checking)
+                        if bracket_close + 1 < len(line) and line[bracket_close + 1] == ':':
                             seg_id = line[1:bracket_close].strip()  # Skip opening [
                             text = line[bracket_close+2:].strip()
                             if seg_id and text:
@@ -752,7 +755,6 @@ TRANSLATED SEGMENTS:"""
             final_path = await self.docx_to_pdf(translated_docx, output_path)
         else:
             # Output as DOCX
-            import shutil
             final_output = output_path.replace(".pdf", ".docx")
             shutil.copy(translated_docx, final_output)
             final_path = final_output
@@ -854,7 +856,6 @@ TRANSLATED SEGMENTS:"""
     
     def cleanup_job_temp_dir(self, job_temp_dir: str):
         """Clean up a specific job's temporary directory."""
-        import shutil
         if os.path.exists(job_temp_dir):
             try:
                 shutil.rmtree(job_temp_dir)
@@ -866,7 +867,6 @@ TRANSLATED SEGMENTS:"""
     
     def cleanup(self):
         """Clean up all temporary files and directories."""
-        import shutil
         
         # Clean up individual job directories first
         for job_dir in list(self._job_temp_dirs):
