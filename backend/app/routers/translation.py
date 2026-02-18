@@ -25,6 +25,7 @@ from ..services.auth import get_current_user
 from ..services.translation_service import translation_service, SUPPORTED_LANGUAGES
 from ..services.document_converter_service import document_converter_service
 from ..services.document_translation_service import document_translation_service
+from ..services.file_validation import get_validation_service
 from ..models import Agent, AgentType, TranslationJob, User, Conversation, Message
 from ..schemas import (
     TranslationRequest,
@@ -482,6 +483,29 @@ async def translate_file(
             detail=f"Unsupported file type: {file_ext}. Supported: {', '.join(supported_types)}"
         )
 
+    # Read file content for validation
+    content = await file.read()
+    
+    # Perform comprehensive file validation
+    validation_service = get_validation_service()
+    validation_result = validation_service.validate_file(
+        file_content=content,
+        filename=file.filename,
+        expected_extension=f".{file_ext}",
+    )
+    
+    if not validation_result.is_valid:
+        logger.warning(
+            "File validation failed for translation",
+            filename=file.filename,
+            error_code=validation_result.error_code,
+            error_message=validation_result.error_message,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=validation_result.error_message,
+        )
+
     # Create job-specific directory with unique ID (prefixed with timestamp for easy sorting)
     timestamp = datetime.now().strftime("%Y%m%d%H%M")
     job_uuid = f"{timestamp}_{str(uuid.uuid4())[:8]}"
@@ -492,7 +516,6 @@ async def translate_file(
     source_file_path = job_dir / f"source_{file.filename}"
 
     with open(source_file_path, "wb") as f:
-        content = await file.read()
         f.write(content)
 
     # Create translation job with job directory

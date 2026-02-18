@@ -21,6 +21,7 @@ from ..schemas import (
 from ..services.auth import get_current_active_user
 from ..services.qdrant_service import qdrant_service
 from ..services.document_service import document_service
+from ..services.file_validation import get_validation_service, ValidationErrorCode
 from ..config import settings, get_video_prompt_library
 from ..arq_client import get_arq_pool, get_redis_client
 from ..workers.base import TASK_INGESTION_FILE, TASK_INGESTION_VIDEO
@@ -503,14 +504,28 @@ async def upload_document(
     # Read file content
     content = await file.read()
 
-    # Check file size (videos have larger limit)
-    is_video = file_ext == "mp4"
-    max_size = settings.MAX_VIDEO_SIZE if is_video else settings.MAX_FILE_SIZE
-    if len(content) > max_size:
+    # Perform comprehensive file validation
+    validation_service = get_validation_service()
+    validation_result = validation_service.validate_file(
+        file_content=content,
+        filename=file.filename,
+        expected_extension=f".{file_ext}",
+    )
+
+    if not validation_result.is_valid:
+        logger.warning(
+            "File validation failed",
+            filename=file.filename,
+            error_code=validation_result.error_code,
+            error_message=validation_result.error_message,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File too large. Maximum size: {max_size / 1024 / 1024}MB",
+            detail=validation_result.error_message,
         )
+
+    # Extract metadata from validation
+    is_video = file_ext == "mp4"
 
     # Save file
     file_path = document_service.save_uploaded_file(content, file.filename)

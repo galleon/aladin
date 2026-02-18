@@ -5,6 +5,7 @@ A full-stack RAG (Retrieval-Augmented Generation) platform for building AI assis
 ## Features
 
 - **Document RAG** — Upload PDFs, DOCX, TXT, MD, CSV, JSON, or crawl web pages. Documents are chunked, embedded, and stored in Qdrant for semantic search. Chat with agents that cite sources with relevance scores.
+- **Data Quality Validation** — Comprehensive validation for all uploaded files including MIME type verification, UTF-8 encoding checks, file size limits, duplicate detection with SHA-256 checksums, and file corruption detection.
 - **Video transcription** — Transcribe video/audio files via Whisper API. Optionally analyse segments with a vision LLM (VLM) and YOLO object tracking.
 - **Document translation** — Translate documents between languages using any OpenAI-compatible LLM.
 - **Multi-LLM support** — Any OpenAI-compatible endpoint (OpenAI, Anthropic via proxy, LiteLLM, local models). Models are fetched dynamically from the configured endpoint.
@@ -70,7 +71,7 @@ backend/              FastAPI application
     routers/          REST endpoints (auth, agents, conversations, data_domains,
                       ingestion, jobs, models, stats, translation, video_transcription)
     services/         Business logic (RAG, embeddings, Qdrant, auth, document
-                      processing, translation, video transcription, knowledge graph)
+                      processing, translation, video transcription, file_validation)
 
 frontend/             React SPA (Vite + TypeScript + Tailwind)
   src/
@@ -109,6 +110,62 @@ See `env.local.template` for the full list. Key variables:
 | `WHISPER_API_BASE` | Whisper API for video transcription (optional) |
 | `VLM_API_BASE` / `VLM_MODEL` | Vision LLM for video analysis (optional) |
 | `DB_*`, `QDRANT_*`, `REDIS_*` | Service connection settings |
+| `MAX_FILE_SIZE` | Maximum file size in bytes (default: 52428800 = 50MB) |
+| `MAX_VIDEO_SIZE` | Maximum video file size in bytes (default: 524288000 = 500MB) |
+
+## Data Quality Validation
+
+Aladin includes comprehensive data quality validation for all uploaded files to ensure data integrity and prevent security issues:
+
+### Validation Checks
+
+1. **File Type Validation**
+   - Verifies file extensions against allowed types
+   - Validates MIME types using magic bytes (file signatures)
+   - Supported formats: PDF, DOCX, PPTX, DOC, TXT, MD, HTML, CSV, JSON, MP4
+
+2. **Data Encoding**
+   - Text-based files (TXT, MD, HTML, CSV, JSON) must be UTF-8 encoded
+   - Prevents data corruption from invalid encodings
+   - Binary files (PDF, DOCX, MP4) are not subject to encoding checks
+
+3. **File Size Limits**
+   - Minimum size: 10 bytes (prevents empty files)
+   - Maximum size for documents: 50MB (configurable via `MAX_FILE_SIZE`)
+   - Maximum size for videos: 500MB (configurable via `MAX_VIDEO_SIZE`)
+
+4. **Duplicate Detection**
+   - SHA-256 checksums calculated for all uploaded files
+   - Prevents duplicate file uploads within the same session
+   - Checksum included in file metadata for integrity verification
+
+5. **File Corruption Detection**
+   - Magic byte verification ensures file headers match expected formats
+   - Detects renamed or corrupted files (e.g., .txt file with PDF extension)
+
+### Error Responses
+
+When validation fails, the API returns a 400 Bad Request with a descriptive error message:
+
+- `EMPTY_FILE`: File contains no data
+- `FILE_TOO_SMALL`: File is smaller than minimum size (10 bytes)
+- `FILE_TOO_LARGE`: File exceeds maximum size limit
+- `INVALID_FILE_TYPE`: File extension not supported or missing
+- `INVALID_MIME_TYPE`: File content doesn't match extension (e.g., PDF data with .txt extension)
+- `INVALID_ENCODING`: Text file is not valid UTF-8
+- `DUPLICATE_FILE`: File with identical content already uploaded
+
+### Configuration
+
+Configure file size limits in your `.env` file:
+
+```bash
+# Maximum file size for documents (bytes)
+MAX_FILE_SIZE=52428800  # 50MB
+
+# Maximum file size for videos (bytes)  
+MAX_VIDEO_SIZE=524288000  # 500MB
+```
 
 ## License
 
