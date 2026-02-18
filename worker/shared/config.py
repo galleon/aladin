@@ -120,8 +120,6 @@ class Settings(BaseSettings):
     # det_limit_side_len: max side length before resize; 1920 = 4K→1080p, 960 = more aggressive downscale
     OCR_DET_LIMIT_SIDE_LEN: int = int(os.getenv("OCR_DET_LIMIT_SIDE_LEN", "1920"))
     OCR_DET_LIMIT_TYPE: str = os.getenv("OCR_DET_LIMIT_TYPE", "max")
-    # Preprocessing: upscale small frames (h<480 or w<640) before OCR; 1=off, 2=2x
-    OCR_UPSCALE_FACTOR: int = int(os.getenv("OCR_UPSCALE_FACTOR", "2"))
     # CLAHE contrast enhancement; helps faint text, can add noise on high-contrast images
     OCR_USE_CLAHE: bool = os.getenv("OCR_USE_CLAHE", "true").lower() == "true"
     # Multi-scale: comma-separated max side lengths (e.g. "2200,3000"); single value for faster

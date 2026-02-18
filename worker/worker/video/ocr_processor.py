@@ -14,11 +14,13 @@ import cv2
 import numpy as np
 
 
-@dataclass(frozen=True)
+@dataclass
 class OcrHit:
     text: str
     conf: float
-    box: np.ndarray  # shape (4,2) float32 in ORIGINAL image coords
+    # shape (4,2) float32 in ORIGINAL image coords
+    # Note: not frozen — np.ndarray fields cannot be truly immutable in a dataclass.
+    box: np.ndarray
     scale_tag: str
 
 
@@ -112,7 +114,7 @@ def normalize_text(s: str) -> str:
 def run_paddle_ocr(
     ocr: Any,
     bgr: np.ndarray,
-    scale_to_original: float,
+    downscale_factor: float,
     scale_tag: str,
     min_conf: float,
     use_angle_cls: bool = True,
@@ -134,7 +136,8 @@ def run_paddle_ocr(
         conf_f = float(conf) if conf is not None else 0.0
         if conf_f < min_conf:
             continue
-        box_orig = box_pts / scale_to_original
+        # downscale_factor < 1.0 when image was shrunk; divide to get original coords
+        box_orig = box_pts / downscale_factor
         hits.append(OcrHit(text=text_n, conf=conf_f, box=box_orig, scale_tag=scale_tag))
     return hits
 
@@ -186,8 +189,13 @@ def ocr_single_image(
         return ""
 
     all_hits: List[OcrHit] = []
+    seen_factors: set = set()
     for ms in max_sides:
-        resized, scale = resize_max_side(bgr, ms)
+        resized, factor = resize_max_side(bgr, ms)
+        # Skip if this downscale factor was already processed (e.g. image smaller than max_side)
+        if factor in seen_factors:
+            continue
+        seen_factors.add(factor)
         pre = preprocess_for_ocr(
             resized,
             use_clahe=use_clahe,
@@ -199,7 +207,7 @@ def ocr_single_image(
         hits = run_paddle_ocr(
             ocr=ocr,
             bgr=pre,
-            scale_to_original=scale,
+            downscale_factor=factor,
             scale_tag=tag,
             min_conf=min_conf,
             use_angle_cls=use_angle_cls,
@@ -207,5 +215,7 @@ def ocr_single_image(
         all_hits.extend(hits)
 
     merged = merge_hits(all_hits, merge_iou=merge_iou)
+    # Cap by confidence, then sort spatially (top→bottom, left→right) for LLM readability
     merged = sorted(merged, key=lambda h: h.conf, reverse=True)[:keep_topk]
+    merged = sorted(merged, key=lambda h: (h.box.mean(axis=0)[1], h.box.mean(axis=0)[0]))
     return " ".join(h.text for h in merged).strip()

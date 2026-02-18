@@ -187,7 +187,6 @@ services:
             OCR_UNSHARP_AMOUNT: ${OCR_UNSHARP_AMOUNT:-0.9}
             OCR_DET_DB_THRESH: ${OCR_DET_DB_THRESH:-0.25}
             OCR_DET_DB_BOX_THRESH: ${OCR_DET_DB_BOX_THRESH:-0.55}
-            OCR_UPSCALE_FACTOR: ${OCR_UPSCALE_FACTOR:-2}
             OCR_USE_CLAHE: ${OCR_USE_CLAHE:-true}
             OCR_DET_LIMIT_SIDE_LEN: ${OCR_DET_LIMIT_SIDE_LEN:-1920}
             # YOLO imgsz: 1280 = better for 4K, 640 = faster (default)

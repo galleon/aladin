@@ -85,14 +85,19 @@ def _parse_ocr_max_sides() -> list[int]:
         try:
             max_sides.append(int(s))
         except ValueError:
-            continue
+            logger.warning("OCR_MAX_SIDES: ignoring non-integer token %r in %r", s, raw)
     if not max_sides:
+        logger.warning("OCR_MAX_SIDES=%r produced no valid values; falling back to [2200, 3000]", raw)
         max_sides = [2200, 3000]
     return max_sides
 
 
 def _get_paddle_ocr():
-    """Lazy-load PaddleOCR (cached). Returns None if not installed."""
+    """Lazy-load PaddleOCR (cached). Returns None if not installed.
+
+    Note: OCR_USE_ANGLE_CLS (and other constructor-level settings) are baked in at first
+    initialization. Changing them via env var requires a worker restart to take effect.
+    """
     global _paddle_ocr_instance
     if _paddle_ocr_instance is not None:
         return _paddle_ocr_instance
