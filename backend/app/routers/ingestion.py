@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, HttpUrl
 
 from ..config import settings
 from ..services.auth import get_current_user
+from ..services.file_validation import get_validation_service, ValidationErrorCode
 from ..models import User
 from ..arq_client import get_arq_pool, get_redis_client
 from ..workers.base import TASK_INGESTION_WEB, TASK_INGESTION_FILE
@@ -209,12 +210,34 @@ async def ingest_file(
     job_id = job_id or f"file_{uuid.uuid4().hex[:12]}"
 
     try:
+        # Read file content first for validation
+        content = await file.read()
+        
+        # Perform comprehensive file validation
+        validation_service = get_validation_service()
+        validation_result = validation_service.validate_file(
+            file_content=content,
+            filename=file.filename,
+            expected_extension=file_ext,
+        )
+        
+        if not validation_result.is_valid:
+            logger.warning(
+                "File validation failed",
+                filename=file.filename,
+                error_code=validation_result.error_code,
+                error_message=validation_result.error_message,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=validation_result.error_message,
+            )
+        
         # Save file
         file_path = os.path.join(settings.UPLOAD_DIR, f"{job_id}{file_ext}")
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
         with open(file_path, "wb") as f:
-            content = await file.read()
             f.write(content)
 
         # If extract_only, extract markdown synchronously and return it
@@ -329,10 +352,32 @@ async def extract_markdown(
     file_path = os.path.join(settings.UPLOAD_DIR, f"extract_{temp_id}{file_ext}")
 
     try:
+        # Read and validate file content
+        content = await file.read()
+        
+        # Perform comprehensive file validation
+        validation_service = get_validation_service()
+        validation_result = validation_service.validate_file(
+            file_content=content,
+            filename=file.filename,
+            expected_extension=file_ext,
+        )
+        
+        if not validation_result.is_valid:
+            logger.warning(
+                "File validation failed",
+                filename=file.filename,
+                error_code=validation_result.error_code,
+                error_message=validation_result.error_message,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=validation_result.error_message,
+            )
+        
         # Save file temporarily
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "wb") as f:
-            content = await file.read()
             f.write(content)
 
         # Extract markdown
