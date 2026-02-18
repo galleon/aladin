@@ -2,7 +2,7 @@
  * Voice button component with visual feedback for recording state
  */
 
-import { Mic, Square, Volume2, VolumeX } from 'lucide-react';
+import { Mic, Square, VolumeX } from 'lucide-react';
 import { RecordingState } from '../hooks/useVoice';
 
 interface VoiceButtonProps {
