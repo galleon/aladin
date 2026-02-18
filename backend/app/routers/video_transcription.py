@@ -14,6 +14,7 @@ import uuid
 from ..database import get_db
 from ..models import User, Agent, AgentType, TranscriptionJob
 from ..services.auth import get_current_active_user
+from ..services.file_validation import get_validation_service
 from ..config import settings
 from ..arq_client import (
     get_arq_pool,
@@ -82,11 +83,24 @@ async def transcribe_video(
     _verify_agent_and_access(agent_id, current_user, db)
 
     video_content = await video.read()
-    video_size = len(video_content)
-    if video_size > settings.MAX_VIDEO_SIZE:
+    
+    # Perform comprehensive file validation for video
+    validation_service = get_validation_service()
+    validation_result = validation_service.validate_file(
+        file_content=video_content,
+        filename=video.filename or "video.mp4",
+    )
+    
+    if not validation_result.is_valid:
+        logger.warning(
+            "Video file validation failed",
+            filename=video.filename,
+            error_code=validation_result.error_code,
+            error_message=validation_result.error_message,
+        )
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Video file too large. Maximum size: {settings.MAX_VIDEO_SIZE / 1024 / 1024}MB",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=validation_result.error_message,
         )
 
     timestamp = datetime.now().strftime("%Y%m%d%H%M")
@@ -161,11 +175,24 @@ async def add_subtitles_to_video(
     _verify_agent_and_access(agent_id, current_user, db)
 
     video_content = await video.read()
-    video_size = len(video_content)
-    if video_size > settings.MAX_VIDEO_SIZE:
+    
+    # Perform comprehensive file validation for video
+    validation_service = get_validation_service()
+    validation_result = validation_service.validate_file(
+        file_content=video_content,
+        filename=video.filename or "video.mp4",
+    )
+    
+    if not validation_result.is_valid:
+        logger.warning(
+            "Video file validation failed",
+            filename=video.filename,
+            error_code=validation_result.error_code,
+            error_message=validation_result.error_message,
+        )
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Video file too large. Maximum size: {settings.MAX_VIDEO_SIZE / 1024 / 1024}MB",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=validation_result.error_message,
         )
 
     timestamp = datetime.now().strftime("%Y%m%d%H%M")
