@@ -259,13 +259,15 @@ class TestValidationService:
 
     def test_get_validation_service_singleton(self):
         """Test that get_validation_service returns the same instance."""
-        from app.services.file_validation import get_validation_service, _validation_service
+        from app.services.file_validation import get_validation_service, reset_validation_service
         
         # Reset global instance for this test
-        import app.services.file_validation as validation_module
-        validation_module._validation_service = None
+        reset_validation_service()
         
         service1 = get_validation_service()
         service2 = get_validation_service()
         
         assert service1 is service2
+        
+        # Clean up
+        reset_validation_service()

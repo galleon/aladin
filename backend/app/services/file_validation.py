@@ -56,7 +56,7 @@ class FileValidationResult:
 MIME_TYPE_MAPPINGS = {
     # Documents
     "application/pdf": [".pdf"],
-    "text/plain": [".txt", ".md"],
+    "text/plain": [".txt"],
     "text/markdown": [".md"],
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
     "application/msword": [".doc"],
@@ -377,7 +377,16 @@ def get_validation_service(
     max_video_size: Optional[int] = None,
     enable_duplicate_check: bool = True,
 ) -> FileValidationService:
-    """Get or create the file validation service instance."""
+    """
+    Get or create the file validation service instance.
+    
+    Note: This function uses a singleton pattern. Configuration parameters
+    (max_file_size, max_video_size) are only used on first initialization.
+    Subsequent calls return the existing instance with its original configuration.
+    
+    For testing or custom configurations, create a new FileValidationService
+    instance directly instead of using this function.
+    """
     global _validation_service
     
     if _validation_service is None:
@@ -390,3 +399,14 @@ def get_validation_service(
         )
     
     return _validation_service
+
+
+def reset_validation_service():
+    """
+    Reset the global validation service instance.
+    
+    This is primarily useful for testing to ensure a clean state
+    between test runs.
+    """
+    global _validation_service
+    _validation_service = None

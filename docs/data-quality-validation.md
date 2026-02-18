@@ -25,11 +25,13 @@ The validation logic is implemented in `backend/app/services/file_validation.py`
 
 ### Integration Points
 
-Validation is integrated at three upload endpoints:
+Validation is integrated at five upload endpoints:
 
 1. **Data Domain Upload**: `POST /data-domains/{domain_id}/documents`
 2. **Ingestion File Upload**: `POST /ingestion/file`
 3. **Markdown Extraction**: `POST /ingestion/extract`
+4. **Translation File Upload**: `POST /translation/{agent_id}/translate-file`
+5. **Video Transcription**: `POST /video-transcription/{agent_id}/transcribe` and `POST /video-transcription/{agent_id}/add-subtitles`
 
 ## Validation Rules
 
