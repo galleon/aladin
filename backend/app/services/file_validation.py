@@ -221,7 +221,7 @@ class FileValidationService:
             detected_type = self._detect_file_type_from_signature(file_content)
             
             # For ZIP-based formats (docx, pptx), accept ZIP signature
-            if file_ext in [".docx", ".pptx", ".xlsx"] and detected_type == "zip":
+            if file_ext in [".docx", ".pptx"] and detected_type == "zip":
                 return FileValidationResult(is_valid=True)
             
             # For MP4, accept any MP4 variant

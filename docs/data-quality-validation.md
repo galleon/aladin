@@ -90,10 +90,12 @@ Text-based files must be valid UTF-8:
 
 Files are checked for duplicates using SHA-256 checksums:
 
-- **Scope**: Per-session duplicate detection
+- **Scope**: Per-service-instance (in-memory cache)
 - **Algorithm**: SHA-256 hash of file content
-- **Cache**: In-memory cache cleared on service restart
+- **Cache Lifetime**: Cleared on service restart
 - **Configurable**: Can be disabled via `enable_duplicate_check=False`
+
+Note: The duplicate detection cache is maintained in memory and is cleared when the service restarts. It detects duplicates within a single service instance, not across multiple instances or restarts.
 
 ## Error Handling
 
