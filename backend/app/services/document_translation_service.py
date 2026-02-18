@@ -11,6 +11,7 @@ This service implements format-preserving translation by:
 Supports: PDF, DOCX, PPTX with layout preservation.
 """
 
+import atexit
 import json
 import logging
 import os
@@ -106,8 +107,14 @@ class DocumentTranslationService:
     5. Convert back to original format
     """
 
+    # Configuration constants for font scaling
+    FONT_SCALE_THRESHOLD = 1.25  # Apply scaling when text expands by 25%
+    MIN_FONT_SIZE_PT = 8  # Minimum font size in points
+    MAX_SCALE_FACTOR = 0.85  # Maximum reduction (85% of original)
+    
     def __init__(self):
         self._temp_dir = tempfile.mkdtemp(prefix="doc_translate_")
+        self._job_temp_dirs = []  # Track per-job temp directories
 
     # =========================================================================
     # PDF to DOCX Conversion
@@ -271,6 +278,10 @@ class DocumentTranslationService:
 
         # Build lookup for translations
         translations = {s.id: s for s in structure.segments}
+        
+        # Track translation statistics for validation
+        applied_count = 0
+        skipped_count = 0
 
         # Inject into paragraphs
         for para_idx, paragraph in enumerate(doc.paragraphs):
@@ -282,13 +293,28 @@ class DocumentTranslationService:
                     translated_len = len(segment.text)
 
                     run.text = segment.text
+                    
+                    # Re-apply formatting attributes that were preserved
+                    if segment.bold is not None:
+                        run.bold = segment.bold
+                    if segment.italic is not None:
+                        run.italic = segment.italic
+                    if segment.underline is not None:
+                        run.underline = segment.underline
+                    
+                    applied_count += 1
 
                     # Dynamic font scaling if text expanded significantly
-                    if scale_fonts and translated_len > original_len * 1.3:
+                    # Use consistent threshold across all content types
+                    if scale_fonts and translated_len > original_len * self.FONT_SCALE_THRESHOLD:
                         if run.font.size:
-                            scale_factor = min(original_len / translated_len, 0.85)
-                            new_size = max(run.font.size.pt * scale_factor, 8)
+                            scale_factor = min(original_len / translated_len, self.MAX_SCALE_FACTOR)
+                            new_size = max(run.font.size.pt * scale_factor, self.MIN_FONT_SIZE_PT)
                             run.font.size = Pt(new_size)
+                else:
+                    # Track segments that weren't translated
+                    if run.text.strip():
+                        skipped_count += 1
 
         # Inject into tables
         for table_idx, table in enumerate(doc.tables):
@@ -303,16 +329,47 @@ class DocumentTranslationService:
                                 translated_len = len(segment.text)
 
                                 run.text = segment.text
+                                
+                                # Re-apply formatting attributes
+                                if segment.bold is not None:
+                                    run.bold = segment.bold
+                                if segment.italic is not None:
+                                    run.italic = segment.italic
+                                if segment.underline is not None:
+                                    run.underline = segment.underline
+                                
+                                applied_count += 1
 
-                                # Scale fonts in tables more aggressively
-                                if scale_fonts and translated_len > original_len * 1.2:
+                                # Use consistent scaling threshold for tables
+                                if scale_fonts and translated_len > original_len * self.FONT_SCALE_THRESHOLD:
                                     if run.font.size:
-                                        scale_factor = min(original_len / translated_len, 0.8)
-                                        new_size = max(run.font.size.pt * scale_factor, 7)
+                                        scale_factor = min(original_len / translated_len, self.MAX_SCALE_FACTOR)
+                                        new_size = max(run.font.size.pt * scale_factor, self.MIN_FONT_SIZE_PT)
                                         run.font.size = Pt(new_size)
+                            else:
+                                if run.text.strip():
+                                    skipped_count += 1
 
         doc.save(output_path)
-        logger.info("Injected translations into DOCX", output_path=output_path)
+        
+        # Log translation injection statistics
+        total_expected = len(translations)
+        logger.info(
+            "Injected translations into DOCX",
+            output_path=output_path,
+            applied=applied_count,
+            expected=total_expected,
+            skipped=skipped_count,
+        )
+        
+        # Warn if significant mismatch
+        if applied_count < total_expected * 0.9:
+            logger.warning(
+                "Translation injection incomplete",
+                applied=applied_count,
+                expected=total_expected,
+                missing_pct=int((1 - applied_count/total_expected) * 100)
+            )
 
         return output_path
 
@@ -377,6 +434,10 @@ class DocumentTranslationService:
         prs = Presentation(output_path)
 
         translations = {s.id: s for s in structure.segments}
+        
+        # Track translation statistics
+        applied_count = 0
+        skipped_count = 0
 
         for slide_idx, slide in enumerate(prs.slides):
             for shape_idx, shape in enumerate(slide.shapes):
@@ -392,16 +453,45 @@ class DocumentTranslationService:
                             translated_len = len(segment.text)
 
                             run.text = segment.text
+                            
+                            # Re-apply formatting attributes
+                            if segment.bold is not None:
+                                run.font.bold = segment.bold
+                            if segment.italic is not None:
+                                run.font.italic = segment.italic
+                            
+                            applied_count += 1
 
-                            # PowerPoint needs more aggressive scaling
-                            if scale_fonts and translated_len > original_len * 1.15:
+                            # Use consistent scaling threshold for presentations
+                            if scale_fonts and translated_len > original_len * self.FONT_SCALE_THRESHOLD:
                                 if run.font.size:
-                                    scale_factor = min(original_len / translated_len, 0.75)
-                                    new_size = max(run.font.size.pt * scale_factor, 10)
+                                    scale_factor = min(original_len / translated_len, self.MAX_SCALE_FACTOR)
+                                    new_size = max(run.font.size.pt * scale_factor, self.MIN_FONT_SIZE_PT)
                                     run.font.size = Pt(new_size)
+                        else:
+                            if run.text.strip():
+                                skipped_count += 1
 
         prs.save(output_path)
-        logger.info("Injected translations into PPTX", output_path=output_path)
+        
+        # Log translation injection statistics
+        total_expected = len(translations)
+        logger.info(
+            "Injected translations into PPTX",
+            output_path=output_path,
+            applied=applied_count,
+            expected=total_expected,
+            skipped=skipped_count,
+        )
+        
+        # Warn if significant mismatch
+        if applied_count < total_expected * 0.9:
+            logger.warning(
+                "Translation injection incomplete",
+                applied=applied_count,
+                expected=total_expected,
+                missing_pct=int((1 - applied_count/total_expected) * 100)
+            )
 
         return output_path
 
@@ -467,6 +557,25 @@ class DocumentTranslationService:
             # Parse response
             translated_text = result.get("translated_text", "")
             batch_translations = self._parse_translation_response(translated_text)
+            
+            # Validate translation completeness for this batch
+            expected_ids = {s['id'] for s in batch}
+            found_ids = set(batch_translations.keys())
+            missing_ids = expected_ids - found_ids
+            
+            if missing_ids:
+                logger.warning(
+                    f"Batch {batch_num + 1}/{total_batches} missing translations",
+                    missing_count=len(missing_ids),
+                    missing_ids=list(missing_ids)[:5],  # Log first 5
+                )
+                
+                # For missing segments, use original text as fallback
+                for seg in batch:
+                    if seg['id'] in missing_ids:
+                        logger.debug(f"Using original text as fallback for {seg['id']}")
+                        batch_translations[seg['id']] = seg['text']
+            
             translations.update(batch_translations)
 
             # Report progress
@@ -480,6 +589,18 @@ class DocumentTranslationService:
                 f"Translated batch {batch_num + 1}/{total_batches}",
                 segments_in_batch=len(batch),
                 translations_found=len(batch_translations),
+                missing_count=len(missing_ids),
+            )
+        
+        # Final validation
+        total_segments = len(segments)
+        total_translations = len(translations)
+        if total_translations < total_segments:
+            logger.warning(
+                "Translation incomplete",
+                expected=total_segments,
+                received=total_translations,
+                missing=total_segments - total_translations,
             )
 
         return translations
@@ -496,11 +617,13 @@ class DocumentTranslationService:
         return f"""Translate the following text segments to {target_language} using {mode}.
 
 IMPORTANT RULES:
-1. Maintain the exact format: [segment_id]: translated_text
-2. Preserve any formatting markers, numbers, and special characters
-3. Keep proper nouns, brand names, and technical terms as appropriate
-4. Each segment should be on its own line
-5. Do not add or remove segments
+1. Maintain the EXACT format: [segment_id]: translated_text
+2. Each segment must be on its own line
+3. Do not add or remove segments - translate ALL segments provided
+4. Preserve any formatting markers, numbers, and special characters
+5. Keep proper nouns, brand names, and technical terms as appropriate
+6. Do NOT add explanations, notes, or any additional commentary
+7. Output ONLY the translated segments in the required format
 
 TEXT SEGMENTS TO TRANSLATE:
 {segments_text}
@@ -508,16 +631,38 @@ TEXT SEGMENTS TO TRANSLATE:
 TRANSLATED SEGMENTS:"""
 
     def _parse_translation_response(self, response: str) -> dict[str, str]:
-        """Parse the LLM response to extract segment translations."""
+        """
+        Parse the LLM response to extract segment translations.
+        
+        Uses multiple parsing strategies for robustness.
+        """
         translations = {}
 
-        # Match pattern: [segment_id]: translated_text
+        # Strategy 1: Match pattern [segment_id]: translated_text
         pattern = r'\[([^\]]+)\]:\s*(.+?)(?=\n\[|\Z)'
         matches = re.findall(pattern, response, re.DOTALL)
-
+        
         for seg_id, text in matches:
             translations[seg_id.strip()] = text.strip()
-
+        
+        # Strategy 2: If primary parsing found nothing, try line-by-line fallback
+        # This handles cases where the LLM didn't follow the exact format
+        if not translations and response:
+            logger.warning("Primary segment parsing failed, attempting fallback parsing")
+            for line in response.split('\n'):
+                # Try to match [id]: text pattern more leniently
+                if ']:' in line:
+                    try:
+                        # Find the first ] followed by :
+                        bracket_close = line.index(']')
+                        if line[bracket_close+1:bracket_close+2] == ':':
+                            seg_id = line[1:bracket_close].strip()  # Skip opening [
+                            text = line[bracket_close+2:].strip()
+                            if seg_id and text:
+                                translations[seg_id] = text
+                    except (ValueError, IndexError):
+                        continue
+        
         return translations
 
     # =========================================================================
@@ -697,13 +842,57 @@ TRANSLATED SEGMENTS:"""
             "total_segments": len(segments),
         }
 
-    def cleanup(self):
-        """Clean up temporary files."""
+    def create_job_temp_dir(self) -> str:
+        """
+        Create a job-specific temporary directory for better isolation.
+        
+        Returns the path to the new temp directory.
+        """
+        job_temp = tempfile.mkdtemp(prefix="doc_job_", dir=self._temp_dir)
+        self._job_temp_dirs.append(job_temp)
+        return job_temp
+    
+    def cleanup_job_temp_dir(self, job_temp_dir: str):
+        """Clean up a specific job's temporary directory."""
         import shutil
+        if os.path.exists(job_temp_dir):
+            try:
+                shutil.rmtree(job_temp_dir)
+                if job_temp_dir in self._job_temp_dirs:
+                    self._job_temp_dirs.remove(job_temp_dir)
+                logger.debug("Cleaned up job temp directory", path=job_temp_dir)
+            except Exception as e:
+                logger.warning("Failed to clean up job temp directory", path=job_temp_dir, error=str(e))
+    
+    def cleanup(self):
+        """Clean up all temporary files and directories."""
+        import shutil
+        
+        # Clean up individual job directories first
+        for job_dir in list(self._job_temp_dirs):
+            self.cleanup_job_temp_dir(job_dir)
+        
+        # Clean up main temp directory
         if os.path.exists(self._temp_dir):
-            shutil.rmtree(self._temp_dir)
+            try:
+                shutil.rmtree(self._temp_dir)
+                logger.debug("Cleaned up main temp directory", path=self._temp_dir)
+            except Exception as e:
+                logger.warning("Failed to clean up main temp directory", path=self._temp_dir, error=str(e))
+    
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensures cleanup."""
+        self.cleanup()
+        return False
 
 
 # Singleton instance
 document_translation_service = DocumentTranslationService()
+
+# Register cleanup on exit to ensure temp files are removed
+atexit.register(document_translation_service.cleanup)
 
