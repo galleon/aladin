@@ -74,6 +74,17 @@ class Settings(BaseSettings):
     WHISPER_API_BASE: str | None = os.getenv("WHISPER_API_BASE", None)
     WHISPER_API_KEY: str | None = os.getenv("WHISPER_API_KEY", None)
 
+    # Speech-to-Text API (OpenAI-compatible endpoint for voice chat)
+    STT_API_BASE: str = os.getenv("STT_API_BASE") or os.getenv("WHISPER_API_BASE") or "http://localhost:8000/v1"
+    STT_API_KEY: str = os.getenv("STT_API_KEY") or os.getenv("WHISPER_API_KEY") or "sk-dummy-key"
+    STT_MODEL: str = os.getenv("STT_MODEL", "whisper-1")
+
+    # Text-to-Speech API (OpenAI-compatible endpoint for voice chat)
+    TTS_API_BASE: str = os.getenv("TTS_API_BASE", "http://localhost:8000/v1")
+    TTS_API_KEY: str = os.getenv("TTS_API_KEY", "sk-dummy-key")
+    TTS_MODEL: str = os.getenv("TTS_MODEL", "tts-1")
+    TTS_VOICE: str = os.getenv("TTS_VOICE", "alloy")
+
     # OpenTelemetry
     OTEL_ENABLED: bool = os.getenv("OTEL_ENABLED", "false").lower() == "true"
     OTEL_EXPORTER_OTLP_ENDPOINT: str = os.getenv(

@@ -666,4 +666,34 @@ export const modelsApi = {
     refresh: () => apiClient.post<{ message: string; llm_count: number; embedding_count: number }>('/models/refresh'),
 };
 
+// ============== Voice API ==============
+
+export interface VoiceTranscribeResponse {
+    text: string;
+    language: string | null;
+}
+
+export const voiceApi = {
+    transcribe: (audioFile: Blob, language?: string) => {
+        const formData = new FormData();
+        formData.append('file', audioFile, 'recording.webm');
+        if (language) {
+            formData.append('language', language);
+        }
+        return apiClient.post<VoiceTranscribeResponse>('/voice/transcribe', formData, {
+            timeout: 60000, // 60 seconds for transcription
+        });
+    },
+
+    synthesize: (text: string, voice = 'alloy', speed = 1.0) => {
+        return apiClient.post<Blob>('/voice/synthesize', 
+            { text, voice, speed },
+            { 
+                responseType: 'blob',
+                timeout: 60000, // 60 seconds for synthesis
+            }
+        );
+    },
+};
+
 export default apiClient;

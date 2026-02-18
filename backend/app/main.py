@@ -18,6 +18,7 @@ from .routers import (
     video_transcription,
     jobs,
     stats,
+    voice,
 )
 
 logger = structlog.get_logger()
@@ -69,6 +70,7 @@ app.include_router(ingestion.router, prefix="/api")
 app.include_router(video_transcription.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
+app.include_router(voice.router, prefix="/api")
 
 
 @app.get("/")
