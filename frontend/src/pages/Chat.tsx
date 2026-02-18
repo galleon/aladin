@@ -14,7 +14,10 @@ import {
   Sparkles,
   User,
   MessageSquare,
+  Volume2,
 } from 'lucide-react';
+import { useVoice } from '../hooks/useVoice';
+import VoiceButton from '../components/VoiceButton';
 
 export default function Chat() {
   const { agentId, conversationId } = useParams<{ agentId: string; conversationId?: string }>();
@@ -23,8 +26,29 @@ export default function Chat() {
     conversationId ? parseInt(conversationId) : null
   );
   const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+
+  // Voice functionality
+  const {
+    recordingState,
+    audioLevel,
+    isPlaying,
+    startRecording,
+    stopRecording,
+    speak,
+    stopSpeaking,
+  } = useVoice({
+    onTranscript: (text) => {
+      setMessage(text);
+      setVoiceError(null);
+    },
+    onError: (error) => {
+      setVoiceError(error);
+      setTimeout(() => setVoiceError(null), 5000);
+    },
+  });
 
   // Fetch agent
   const { data: agent } = useQuery({
@@ -201,6 +225,15 @@ export default function Chat() {
               {/* Feedback for assistant messages */}
               {msg.role === 'assistant' && (
                 <div className="mt-3 flex items-center gap-2">
+                  {/* TTS button */}
+                  <button
+                    onClick={() => speak(msg.content)}
+                    disabled={isPlaying}
+                    className="p-2 rounded-lg transition-colors text-slate-500 hover:bg-slate-800 hover:text-violet-400 disabled:opacity-50"
+                    title="Read aloud"
+                  >
+                    <Volume2 className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => handleFeedback(msg.id, true)}
                     className={`p-2 rounded-lg transition-colors ${
@@ -261,18 +294,36 @@ export default function Chat() {
 
       {/* Input */}
       <form onSubmit={handleSendMessage} className="pt-4 border-t border-slate-800/50">
+        {/* Voice error notification */}
+        {voiceError && (
+          <div className="mb-3 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+            {voiceError}
+          </div>
+        )}
+        
         <div className="flex gap-3">
+          {/* Voice button */}
+          <VoiceButton
+            recordingState={recordingState}
+            audioLevel={audioLevel}
+            isPlaying={isPlaying}
+            onStartRecording={startRecording}
+            onStopRecording={stopRecording}
+            onStopSpeaking={stopSpeaking}
+            disabled={sendMessageMutation.isPending}
+          />
+          
           <input
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type your message..."
+            placeholder="Type your message or use voice..."
             className="flex-1 px-5 py-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all"
-            disabled={sendMessageMutation.isPending}
+            disabled={sendMessageMutation.isPending || recordingState !== 'idle'}
           />
           <button
             type="submit"
-            disabled={!message.trim() || sendMessageMutation.isPending}
+            disabled={!message.trim() || sendMessageMutation.isPending || recordingState !== 'idle'}
             className="px-6 py-4 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {sendMessageMutation.isPending ? (
