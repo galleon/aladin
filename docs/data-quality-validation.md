@@ -31,7 +31,9 @@ Validation is integrated at five upload endpoints:
 2. **Ingestion File Upload**: `POST /ingestion/file`
 3. **Markdown Extraction**: `POST /ingestion/extract`
 4. **Translation File Upload**: `POST /translation/{agent_id}/translate-file`
-5. **Video Transcription**: `POST /video-transcription/{agent_id}/transcribe` and `POST /video-transcription/{agent_id}/add-subtitles`
+5. **Video Transcription** (2 endpoints): 
+   - `POST /video-transcription/{agent_id}/transcribe`
+   - `POST /video-transcription/{agent_id}/add-subtitles`
 
 ## Validation Rules
 

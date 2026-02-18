@@ -69,7 +69,7 @@ MIME_TYPE_MAPPINGS = {
     "video/mp4": [".mp4"],
     "video/x-m4v": [".mp4"],
     # Archives (for docx/pptx which are ZIP-based)
-    "application/zip": [".docx", ".pptx", ".xlsx"],
+    "application/zip": [".docx", ".pptx"],
 }
 
 # File signatures (magic bytes) for common file types
@@ -382,10 +382,20 @@ def get_validation_service(
     
     Note: This function uses a singleton pattern. Configuration parameters
     (max_file_size, max_video_size) are only used on first initialization.
-    Subsequent calls return the existing instance with its original configuration.
+    Subsequent calls return the existing instance with its original configuration,
+    and any new parameter values passed will be ignored.
     
-    For testing or custom configurations, create a new FileValidationService
-    instance directly instead of using this function.
+    For testing or when you need custom configurations that differ from the
+    global instance, create a new FileValidationService instance directly
+    instead of using this function.
+    
+    Args:
+        max_file_size: Maximum file size in bytes (only used on first call)
+        max_video_size: Maximum video size in bytes (only used on first call)
+        enable_duplicate_check: Enable duplicate detection (only used on first call)
+    
+    Returns:
+        FileValidationService: The global validation service instance
     """
     global _validation_service
     

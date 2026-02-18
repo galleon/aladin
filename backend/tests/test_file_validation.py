@@ -56,7 +56,7 @@ class TestFileValidation:
 
     def test_file_too_small(self, validation_service):
         """Test that files below minimum size are rejected."""
-        small_content = b"tiny"  # Less than MIN_FILE_SIZE
+        small_content = b"tiny"  # 4 bytes, less than MIN_FILE_SIZE (10 bytes)
         result = validation_service.validate_file(small_content, "tiny.txt")
         
         assert not result.is_valid
