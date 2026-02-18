@@ -11,11 +11,16 @@ from app.services.file_validation import (
 @pytest.fixture
 def validation_service():
     """Create a validation service instance."""
-    return FileValidationService(
+    service = FileValidationService(
         max_file_size=1024 * 1024,  # 1MB for testing
         max_video_size=5 * 1024 * 1024,  # 5MB for testing
         enable_duplicate_check=True,
     )
+    # Clear cache before each test to ensure test isolation
+    service.clear_checksum_cache()
+    yield service
+    # Clear cache after each test
+    service.clear_checksum_cache()
 
 
 class TestFileValidation:

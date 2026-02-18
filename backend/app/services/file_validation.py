@@ -273,9 +273,9 @@ class FileValidationService:
             if file_content.startswith(signature):
                 return file_type
         
-        # Check for MP4 at different offsets (ftyp box can be at offset 4)
-        if len(file_content) > 12:
-            for offset in [4, 8]:
+        # Check for MP4 at different offsets (ftyp box can be at offset 4 or 8)
+        for offset in [4, 8]:
+            if len(file_content) >= offset + 4:
                 if file_content[offset:offset+4] == b"ftyp":
                     return "mp4"
         

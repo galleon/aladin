@@ -95,7 +95,11 @@ Files are checked for duplicates using SHA-256 checksums:
 - **Cache Lifetime**: Cleared on service restart
 - **Configurable**: Can be disabled via `enable_duplicate_check=False`
 
-Note: The duplicate detection cache is maintained in memory and is cleared when the service restarts. It detects duplicates within a single service instance, not across multiple instances or restarts.
+**Important Limitations:**
+- The duplicate detection cache is maintained in memory and is cleared when the service restarts
+- In multi-instance deployments (horizontal scaling), each service instance maintains its own cache
+- This means duplicate files could be uploaded to different service instances without detection
+- For production deployments requiring global duplicate detection, consider implementing a centralized cache (e.g., Redis) or database-backed checksum storage
 
 ## Error Handling
 
