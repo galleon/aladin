@@ -16,7 +16,7 @@ export default function DataDomains() {
         vlm_model_id: '',
         video_mode: 'procedure',
         vlm_prompt: '',
-        object_tracker: 'yolo' as 'none' | 'simple_blob' | 'yolo' | 'yolo_api',
+        object_tracker: 'none' as 'none' | 'simple_blob' | 'yolo' | 'yolo_api',
         enable_ocr: false,
     });
     const appliedVideoDefaultsRef = useRef(false);
@@ -84,7 +84,7 @@ export default function DataDomains() {
                 vlm_model_id: data.vlm_model_id || null,
                 video_mode: data.video_mode || null,
                 vlm_prompt,
-                object_tracker: data.object_tracker || 'yolo',
+                object_tracker: data.object_tracker || 'none',
                 enable_ocr: data.enable_ocr ?? false,
             });
         },
@@ -102,7 +102,7 @@ export default function DataDomains() {
                 vlm_model_id: '',
                 video_mode: 'procedure',
                 vlm_prompt: '',
-                object_tracker: 'yolo',
+                object_tracker: 'none',
                 enable_ocr: false,
             });
         },
@@ -409,13 +409,13 @@ export default function DataDomains() {
                                                     onChange={(e) => setNewDomain({ ...newDomain, object_tracker: e.target.value as 'none' | 'simple_blob' | 'yolo' | 'yolo_api' })}
                                                     className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50"
                                                 >
-                                                    <option value="yolo">YOLO (local)</option>
+                                                    <option value="none">None (no object tracking)</option>
+                                                    <option value="yolo">YOLO (local or API when configured)</option>
                                                     <option value="yolo_api">YOLO API (Roboflow)</option>
                                                     <option value="simple_blob">Simple Blob (motion detection)</option>
-                                                    <option value="none">None</option>
                                                 </select>
                                                 <p className="mt-1 text-xs text-slate-500">
-                                                    YOLO detects objects with class labels. Use for race/traffic videos.
+                                                    Object tracking detects cars, people, etc. Use for race/traffic videos. Requires YOLO_API_URL/KEY for API mode.
                                                 </p>
                                             </div>
 
@@ -432,7 +432,7 @@ export default function DataDomains() {
                                                 </label>
                                             </div>
                                             <p className="text-xs text-slate-500 -mt-2">
-                                                Extract text from each frame using Tesseract.
+                                                Extract text from each frame using PaddleOCR.
                                             </p>
                                         </div>
                                     )}

@@ -124,6 +124,21 @@ class Settings(BaseSettings):
     OCR_UPSCALE_FACTOR: int = int(os.getenv("OCR_UPSCALE_FACTOR", "2"))
     # CLAHE contrast enhancement; helps faint text, can add noise on high-contrast images
     OCR_USE_CLAHE: bool = os.getenv("OCR_USE_CLAHE", "true").lower() == "true"
+    # Multi-scale: comma-separated max side lengths (e.g. "2200,3000"); single value for faster
+    OCR_MAX_SIDES: str = os.getenv("OCR_MAX_SIDES", "2200,3000")
+    # Min confidence per detection (0.55 = filter noise)
+    OCR_MIN_CONF: float = float(os.getenv("OCR_MIN_CONF", "0.55"))
+    # IoU threshold for merging overlapping detections across scales
+    OCR_MERGE_IOU: float = float(os.getenv("OCR_MERGE_IOU", "0.35"))
+    # Cap on number of detections per frame
+    OCR_KEEP_TOPK: int = int(os.getenv("OCR_KEEP_TOPK", "200"))
+    # Use angle classifier (recommended for rotated text)
+    OCR_USE_ANGLE_CLS: bool = os.getenv("OCR_USE_ANGLE_CLS", "true").lower() == "true"
+    # Unsharp mask: sigma, amount (0=disabled)
+    OCR_UNSHARP_SIGMA: float = float(os.getenv("OCR_UNSHARP_SIGMA", "1.1"))
+    OCR_UNSHARP_AMOUNT: float = float(os.getenv("OCR_UNSHARP_AMOUNT", "0.9"))
+    # CLAHE clip limit (2.5 = stronger than default 2.0)
+    OCR_CLAHE_CLIP_LIMIT: float = float(os.getenv("OCR_CLAHE_CLIP_LIMIT", "2.5"))
 
     # CV/YOLO object detection: imgsz = input size (640 default); 1280 = better for 4K, 640 = faster
     CV_IMGSZ: int = int(os.getenv("CV_IMGSZ", "1280"))

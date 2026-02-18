@@ -176,12 +176,19 @@ services:
             # CV pipeline debug: per-frame images + detections JSON at ./jobs/cv_debug on host
             LOG_CV_DEBUG: ${LOG_CV_DEBUG:-false}
             CV_DEBUG_OUTPUT_DIR: ${CV_DEBUG_OUTPUT_DIR:-/app/uploads/jobs/cv_debug}
-            # OCR tuning: lower thresh = more sensitive; upscale = help small text; clahe = contrast
+            # OCR tuning: multi-scale, CLAHE, unsharp; lower thresh = more sensitive
+            OCR_MAX_SIDES: ${OCR_MAX_SIDES:-2200,3000}
+            OCR_MIN_CONF: ${OCR_MIN_CONF:-0.55}
+            OCR_MERGE_IOU: ${OCR_MERGE_IOU:-0.35}
+            OCR_KEEP_TOPK: ${OCR_KEEP_TOPK:-200}
+            OCR_USE_ANGLE_CLS: ${OCR_USE_ANGLE_CLS:-true}
+            OCR_CLAHE_CLIP_LIMIT: ${OCR_CLAHE_CLIP_LIMIT:-2.5}
+            OCR_UNSHARP_SIGMA: ${OCR_UNSHARP_SIGMA:-1.1}
+            OCR_UNSHARP_AMOUNT: ${OCR_UNSHARP_AMOUNT:-0.9}
             OCR_DET_DB_THRESH: ${OCR_DET_DB_THRESH:-0.25}
             OCR_DET_DB_BOX_THRESH: ${OCR_DET_DB_BOX_THRESH:-0.55}
             OCR_UPSCALE_FACTOR: ${OCR_UPSCALE_FACTOR:-2}
             OCR_USE_CLAHE: ${OCR_USE_CLAHE:-true}
-            # 1920 = 4K→1080p; 960 = more aggressive downscale (faster, may lose small text)
             OCR_DET_LIMIT_SIDE_LEN: ${OCR_DET_LIMIT_SIDE_LEN:-1920}
             # YOLO imgsz: 1280 = better for 4K, 640 = faster (default)
             CV_IMGSZ: ${CV_IMGSZ:-1280}

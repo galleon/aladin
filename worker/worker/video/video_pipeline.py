@@ -74,31 +74,21 @@ _paddle_ocr_instance: Any = None
 OCR_MODEL_NAME = "PaddleOCR"
 
 
-def _preprocess_for_ocr(frame: np.ndarray) -> np.ndarray:
-    """Preprocess frame to improve OCR detection: upscale, CLAHE contrast."""
+def _parse_ocr_max_sides() -> list[int]:
     from shared.config import settings
-
-    img = frame.copy()
-    h, w = img.shape[:2]
-
-    # Upscale small frames (video overlays often have small text)
-    factor = getattr(settings, "OCR_UPSCALE_FACTOR", 2)
-    if factor > 1 and (h < 480 or w < 640):
-        img = cv2.resize(img, (w * factor, h * factor), interpolation=cv2.INTER_CUBIC)
-
-    # CLAHE contrast enhancement (helps faint text)
-    if getattr(settings, "OCR_USE_CLAHE", True):
+    raw = getattr(settings, "OCR_MAX_SIDES", "2200,3000")
+    max_sides: list[int] = []
+    for s in str(raw).split(","):
+        s = s.strip()
+        if not s:
+            continue
         try:
-            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-            l, a, b = cv2.split(lab)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            l = clahe.apply(l)
-            img = cv2.merge([l, a, b])
-            img = cv2.cvtColor(img, cv2.COLOR_LAB2BGR)
-        except Exception as e:
-            logger.debug("CLAHE preprocessing failed: %s", e)
-
-    return img
+            max_sides.append(int(s))
+        except ValueError:
+            continue
+    if not max_sides:
+        max_sides = [2200, 3000]
+    return max_sides
 
 
 def _get_paddle_ocr():
@@ -111,7 +101,7 @@ def _get_paddle_ocr():
         from shared.config import settings
 
         _paddle_ocr_instance = PaddleOCR(
-            use_angle_cls=False,
+            use_angle_cls=getattr(settings, "OCR_USE_ANGLE_CLS", True),
             lang="en",
             show_log=False,
             det_db_thresh=getattr(settings, "OCR_DET_DB_THRESH", 0.25),
@@ -126,10 +116,23 @@ def _get_paddle_ocr():
 
 
 def _run_ocr_on_segment(seg: Segment, frames_override: list[Any] | None = None) -> str:
-    """Extract text from segment frames using PaddleOCR (local mode)."""
+    """Extract text from segment frames using multi-scale PaddleOCR."""
+    from shared.config import settings
+    from .ocr_processor import ocr_single_image
+
     ocr = _get_paddle_ocr()
     if ocr is None:
         return ""
+
+    max_sides = _parse_ocr_max_sides()
+    min_conf = getattr(settings, "OCR_MIN_CONF", 0.55)
+    merge_iou = getattr(settings, "OCR_MERGE_IOU", 0.35)
+    keep_topk = getattr(settings, "OCR_KEEP_TOPK", 200)
+    use_angle_cls = getattr(settings, "OCR_USE_ANGLE_CLS", True)
+    use_clahe = getattr(settings, "OCR_USE_CLAHE", True)
+    clahe_clip_limit = getattr(settings, "OCR_CLAHE_CLIP_LIMIT", 2.5)
+    unsharp_sigma = getattr(settings, "OCR_UNSHARP_SIGMA", 1.1)
+    unsharp_amount = getattr(settings, "OCR_UNSHARP_AMOUNT", 0.9)
 
     parts: list[str] = []
     frames = frames_override if frames_override is not None else seg.frames
@@ -137,15 +140,19 @@ def _run_ocr_on_segment(seg: Segment, frames_override: list[Any] | None = None) 
         if frame is None or not isinstance(frame, np.ndarray):
             continue
         try:
-            preprocessed = _preprocess_for_ocr(frame)
-            rgb = cv2.cvtColor(preprocessed, cv2.COLOR_BGR2RGB)
-            result = ocr.ocr(rgb, cls=False)
-            text_parts: list[str] = []
-            if result and len(result) > 0 and result[0]:
-                for line in result[0]:
-                    if line and len(line) >= 2:
-                        text_parts.append(str(line[1][0]).strip())
-            text = " ".join(text_parts).strip() if text_parts else ""
+            text = ocr_single_image(
+                bgr=frame,
+                ocr=ocr,
+                max_sides=max_sides,
+                min_conf=min_conf,
+                merge_iou=merge_iou,
+                keep_topk=keep_topk,
+                use_angle_cls=use_angle_cls,
+                use_clahe=use_clahe,
+                clahe_clip_limit=clahe_clip_limit,
+                unsharp_sigma=unsharp_sigma,
+                unsharp_amount=unsharp_amount,
+            )
             parts.append(f"[t={t:.1f}s] {text}" if text else f"[t={t:.1f}s] (none)")
         except Exception as e:
             logger.debug("OCR failed for frame %d: %s", i, e)
@@ -440,11 +447,11 @@ def run_video_pipeline(
                     try:
                         from shared.config import settings
                         ocr_opts = (
-                            f"det_limit_side_len={getattr(settings, 'OCR_DET_LIMIT_SIDE_LEN', 1920)}, "
-                            f"det_db_thresh={getattr(settings, 'OCR_DET_DB_THRESH', 0.25)}, "
-                            f"det_db_box_thresh={getattr(settings, 'OCR_DET_DB_BOX_THRESH', 0.55)}, "
-                            f"upscale={getattr(settings, 'OCR_UPSCALE_FACTOR', 2)}, "
-                            f"clahe={getattr(settings, 'OCR_USE_CLAHE', True)}"
+                            f"max_sides={getattr(settings, 'OCR_MAX_SIDES', '2200,3000')}, "
+                            f"min_conf={getattr(settings, 'OCR_MIN_CONF', 0.55)}, "
+                            f"merge_iou={getattr(settings, 'OCR_MERGE_IOU', 0.35)}, "
+                            f"clahe={getattr(settings, 'OCR_USE_CLAHE', True)}, "
+                            f"angle_cls={getattr(settings, 'OCR_USE_ANGLE_CLS', True)}"
                         )
                     except Exception:
                         ocr_opts = ""
