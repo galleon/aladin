@@ -93,6 +93,12 @@ export const getTranslationJobs = (agentId: number) =>
 export const downloadTranslation = (jobId: number) =>
     api.get(`/translation/jobs/${jobId}/download`, { responseType: 'blob' })
 
+// Avatar Sessions
+export const createAvatarSession = (agentId: number) =>
+    api.post<{ room_name: string; token: string; livekit_url: string }>(
+        `/agents/${agentId}/session`
+    )
+
 // Video Transcription
 export const transcribeVideo = (agentId: number, video: File, language?: string) => {
     const formData = new FormData()

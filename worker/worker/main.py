@@ -23,6 +23,7 @@ from shared.telemetry import setup_telemetry, get_tracer, IngestionMetrics
 from .web import WebProcessor
 from .file import FileProcessor
 from .video_processor import VideoProcessor
+from .avatar_worker import run_avatar_worker
 
 # Configure logging
 logging.basicConfig(
@@ -408,6 +409,7 @@ class WorkerSettings:
         process_web_job,
         process_file_job,
         process_video_job,
+        run_avatar_worker,
     ]
 
     on_startup = startup

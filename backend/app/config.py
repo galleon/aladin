@@ -121,6 +121,11 @@ class Settings(BaseSettings):
     SMTP_FROM: str | None = os.getenv("SMTP_FROM")
     FRONTEND_BASE_URL: str = os.getenv("FRONTEND_BASE_URL", "http://localhost:5174")
 
+    # LiveKit (for avatar agent live video sessions)
+    LIVEKIT_URL: str = os.getenv("LIVEKIT_URL", "ws://localhost:7880")
+    LIVEKIT_API_KEY: str = os.getenv("LIVEKIT_API_KEY", "devkey")
+    LIVEKIT_API_SECRET: str = os.getenv("LIVEKIT_API_SECRET", "secret")
+
     class Config:
         env_file = ".env"
         extra = "allow"
