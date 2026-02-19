@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
 import structlog
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
+from langgraph.graph.message import add_messages
 
 from ..config import settings
 from .embedding_service import embedding_service
@@ -20,6 +21,7 @@ logger = structlog.get_logger()
 class RAGState(TypedDict):
     """State for the RAG graph."""
 
+    messages: Annotated[list[AnyMessage], add_messages]
     query: str
     agent_config: dict[str, Any]
     retrieved_docs: list[dict[str, Any]]
@@ -218,14 +220,36 @@ class RAGService:
     def create_rag_chain(
         self, agent: Agent, data_domains: list[DataDomain] | DataDomain
     ):
-        """Create a RAG chain using LangGraph. data_domains can be a list or single domain."""
+        """Create a RAG chain using LangGraph.
+
+        When the agent has ``tools`` configured, builds a ReAct-style tool-calling
+        graph.  Otherwise falls back to the classic retrieve → generate pipeline
+        so existing behaviour is preserved.
+
+        ``data_domains`` can be a list or single domain.
+        """
         domains = (
             list(data_domains)
             if isinstance(data_domains, (list, tuple))
             else [data_domains]
         )
 
-        # Define the graph nodes
+        # Resolve agent tools (if any)
+        agent_tools = getattr(agent, "tools", None) or []
+        if agent_tools:
+            return self._create_tool_calling_chain(agent, domains, agent_tools)
+
+        return self._create_classic_chain(agent, domains)
+
+    # ------------------------------------------------------------------
+    # Classic retrieve → generate pipeline (backward compatible)
+    # ------------------------------------------------------------------
+
+    def _create_classic_chain(
+        self, agent: Agent, domains: list[DataDomain]
+    ):
+        """Build the original retrieve → generate LangGraph chain."""
+
         def retrieve_node(state: RAGState) -> RAGState:
             """Retrieve relevant documents from all domains."""
             docs = (
@@ -244,7 +268,6 @@ class RAGService:
                 payload = doc.get("payload", {})
                 content = payload.get("content", "") or payload.get("text", "")
                 if content:
-                    # Extract relationships by default
                     knowledge_graph_service.add_chunk_to_graph(
                         content,
                         chunk_id=doc.get("id"),
@@ -271,10 +294,8 @@ class RAGService:
                 max_tokens=agent.max_tokens,
             )
 
-            # Format context from retrieved documents
             context = self.format_context(state["retrieved_docs"])
 
-            # Add reasoning path information if available
             reasoning_info = ""
             if "reasoning_path" in state["agent_config"]:
                 path = state["agent_config"]["reasoning_path"]
@@ -282,7 +303,6 @@ class RAGService:
                     entities = [f"{e[0]} ({e[1]})" for e in path]
                     reasoning_info = f"\n\nReasoning Path (entity connections): {' -> '.join(entities)}"
 
-            # Create the prompt
             system_message = f"""{agent.system_prompt}
 
 Use the following context to answer the user's question. If the context doesn't contain relevant information, say so.
@@ -297,31 +317,24 @@ Context:
                 HumanMessage(content=state["query"]),
             ]
 
-            # Generate response
             response = llm.invoke(messages)
 
-            # Extract token usage if available
             input_tokens = 0
             output_tokens = 0
             if hasattr(response, "usage_metadata"):
                 input_tokens = response.usage_metadata.get("input_tokens", 0)
                 output_tokens = response.usage_metadata.get("output_tokens", 0)
 
-            # Format sources and deduplicate by document_id and page
-            # Worker stores source_file and content; some payloads have document_id (optional)
             sources = []
-            seen_sources = set()  # Track (document_id, page) combinations
+            seen_sources = set()
             for doc in state["retrieved_docs"]:
                 payload = doc.get("payload", {})
-                document_id = payload.get("document_id") or 0  # int for SourceReference
+                document_id = payload.get("document_id") or 0
                 page = payload.get("page")
                 filename = payload.get("filename") or payload.get("source_file", "Unknown")
                 text = payload.get("text") or payload.get("content", "")
 
-                # Create a unique key for deduplication
                 source_key = (document_id, page)
-
-                # Only add if we haven't seen this document+page combination
                 if source_key not in seen_sources:
                     seen_sources.add(source_key)
                     sources.append(
@@ -341,15 +354,70 @@ Context:
 
             return state
 
-        # Build the graph
         workflow = StateGraph(RAGState)
         workflow.add_node("retrieve", retrieve_node)
         workflow.add_node("generate", generate_node)
 
-        # Define edges
         workflow.set_entry_point("retrieve")
         workflow.add_edge("retrieve", "generate")
         workflow.add_edge("generate", END)
+
+        return workflow.compile()
+
+    # ------------------------------------------------------------------
+    # ReAct / tool-calling pipeline
+    # ------------------------------------------------------------------
+
+    def _create_tool_calling_chain(
+        self,
+        agent: Agent,
+        domains: list[DataDomain],
+        tool_names: list[str],
+    ):
+        """Build a ReAct-style LangGraph chain that binds the agent's tools to
+        the LLM and iterates between the model and tool execution nodes."""
+        from langgraph.prebuilt import ToolNode
+        from ..tools import get_tools_by_names
+
+        tools = get_tools_by_names(tool_names)
+        if not tools:
+            logger.warning(
+                "No valid tools resolved for agent, falling back to classic chain",
+                agent_id=agent.id,
+                requested_tools=tool_names,
+            )
+            return self._create_classic_chain(agent, domains)
+
+        llm = self.get_llm(
+            agent.llm_model,
+            temperature=agent.temperature,
+            max_tokens=agent.max_tokens,
+        )
+        llm_with_tools = llm.bind_tools(tools)
+
+        def agent_node(state: RAGState) -> dict:
+            """Invoke the LLM (with tool bindings) on the current messages."""
+            system_prompt = agent.system_prompt or "You are a helpful assistant."
+            msgs = [SystemMessage(content=system_prompt)] + list(state["messages"])
+            response = llm_with_tools.invoke(msgs)
+            return {"messages": [response]}
+
+        def should_continue(state: RAGState) -> str:
+            """Route to 'tools' if the last message has tool calls, else END."""
+            last = state["messages"][-1]
+            if hasattr(last, "tool_calls") and last.tool_calls:
+                return "tools"
+            return END
+
+        tool_node = ToolNode(tools)
+
+        workflow = StateGraph(RAGState)
+        workflow.add_node("agent", agent_node)
+        workflow.add_node("tools", tool_node)
+
+        workflow.set_entry_point("agent")
+        workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+        workflow.add_edge("tools", "agent")
 
         return workflow.compile()
 
@@ -372,6 +440,7 @@ Context:
 
             # Initial state
             initial_state: RAGState = {
+                "messages": [],
                 "query": query,
                 "agent_config": {
                     "model": agent.llm_model,

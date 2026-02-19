@@ -115,6 +115,7 @@ async def create_rag_agent(
         max_tokens=agent_data.max_tokens,
         retrieval_k=agent_data.retrieval_k,
         test_questions=agent_data.test_questions,
+        tools=agent_data.tools or [],
         is_public=agent_data.is_public,
         owner_id=current_user.id,
     )
@@ -282,6 +283,7 @@ async def get_agent(
         "owner_id": agent.owner_id,
         "is_public": agent.is_public,
         "test_questions": agent.test_questions,
+        "tools": agent.tools or [],
         "model_available": model_available,
         "created_at": agent.created_at,
         "updated_at": agent.updated_at,
