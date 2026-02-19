@@ -68,6 +68,7 @@ docker-compose.override.yml
 *.db
 *.sqlite
 *.sqlite3
+file::memory:
 postgres_data/
 
 # Temporary files
