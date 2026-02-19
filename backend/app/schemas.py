@@ -17,6 +17,7 @@ class AgentType(str, Enum):
     RAG = "rag"
     TRANSLATION = "translation"
     VIDEO_TRANSCRIPTION = "video_transcription"
+    AVATAR = "avatar"
 
 
 # ============== Auth Schemas ==============
@@ -245,6 +246,32 @@ class VideoTranscriptionAgentCreate(BaseModel):
     is_public: bool = False
 
 
+class AvatarAgentCreate(BaseModel):
+    """Avatar Agent creation schema."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = None
+    llm_model: str = Field(..., description="LLM model ID from available models")
+    system_prompt: str | None = None
+    temperature: float = Field(0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(2048, ge=1, le=16384)
+    data_domain_ids: list[int] = Field(default_factory=list, description="Optional RAG data domain IDs")
+    retrieval_k: int = Field(5, ge=1, le=20)
+    avatar_config: dict | None = Field(
+        None,
+        description='Avatar config, e.g. {"video_source_url": "...", "image_url": "..."}',
+    )
+    is_public: bool = False
+
+
+class AvatarSessionResponse(BaseModel):
+    """Response containing a LiveKit room token for an avatar session."""
+
+    room_name: str
+    token: str
+    livekit_url: str
+
+
 class AgentUpdate(BaseModel):
     """Agent update schema (works for both types)."""
 
@@ -263,6 +290,7 @@ class AgentUpdate(BaseModel):
     supported_languages: list[str] | None = None
     is_public: bool | None = None
     test_questions: list[dict] | None = None
+    avatar_config: dict | None = None
 
 
 class AgentResponse(BaseModel):
@@ -285,6 +313,8 @@ class AgentResponse(BaseModel):
     source_language: str | None
     target_language: str | None
     supported_languages: list[str] | None
+    # Avatar-specific
+    avatar_config: dict | None = None
     # Common
     owner_id: int
     is_public: bool

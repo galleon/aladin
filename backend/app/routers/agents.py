@@ -12,6 +12,7 @@ from ..schemas import (
     RAGAgentCreate,
     TranslationAgentCreate,
     VideoTranscriptionAgentCreate,
+    AvatarAgentCreate,
     AgentUpdate,
     AgentResponse,
     AgentListResponse,
@@ -223,6 +224,52 @@ async def get_video_transcription_config():
     }
 
 
+@router.post(
+    "/avatar",
+    response_model=AgentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_avatar_agent(
+    agent_data: AvatarAgentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Create a new Avatar agent backed by a LiveKit room and SoulX-LiveTalk."""
+    agent = Agent(
+        name=agent_data.name,
+        description=agent_data.description,
+        agent_type=AgentType.AVATAR,
+        llm_model=agent_data.llm_model,
+        system_prompt=agent_data.system_prompt,
+        temperature=agent_data.temperature,
+        max_tokens=agent_data.max_tokens,
+        retrieval_k=agent_data.retrieval_k,
+        avatar_config=agent_data.avatar_config,
+        is_public=agent_data.is_public,
+        owner_id=current_user.id,
+    )
+    db.add(agent)
+    db.flush()
+
+    # Optionally attach RAG data domains
+    if agent_data.data_domain_ids:
+        domains = (
+            db.query(DataDomain)
+            .filter(
+                DataDomain.id.in_(agent_data.data_domain_ids),
+                DataDomain.owner_id == current_user.id,
+            )
+            .all()
+        )
+        agent.data_domains = domains
+
+    db.commit()
+    db.refresh(agent)
+
+    logger.info("Created Avatar agent", agent_id=agent.id, name=agent.name)
+    return agent
+
+
 # Keep the old POST endpoint for backwards compatibility (defaults to RAG)
 @router.post("/", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
 async def create_agent(
@@ -279,6 +326,7 @@ async def get_agent(
         "source_language": agent.source_language,
         "target_language": agent.target_language,
         "supported_languages": agent.supported_languages,
+        "avatar_config": agent.avatar_config,
         "owner_id": agent.owner_id,
         "is_public": agent.is_public,
         "test_questions": agent.test_questions,

@@ -54,6 +54,8 @@ dependencies = [
     "pyyaml>=6.0",
     "inference-sdk>=1.0.0",
     "supervision>=0.20.0",
+    "livekit-agents>=0.8.0",
+    "livekit-api>=0.7.0",
 ]
 
 [project.optional-dependencies]

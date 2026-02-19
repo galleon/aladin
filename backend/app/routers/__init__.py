@@ -10,6 +10,8 @@ from . import (
     video_transcription,
     jobs,
     stats,
+    voice,
+    avatar_session,
 )
 
 __all__ = [
@@ -23,4 +25,6 @@ __all__ = [
     "video_transcription",
     "jobs",
     "stats",
+    "voice",
+    "avatar_session",
 ]

@@ -14,6 +14,7 @@ import {
 } from '../api'
 import TranslationView from './TranslationView'
 import VideoTranscriptionView from './VideoTranscriptionView'
+import AvatarView from './AvatarView'
 
 export default function ChatView() {
     const {
@@ -216,6 +217,11 @@ export default function ChatView() {
     // Render video transcription UI for video transcription agents
     if (selectedAgent?.agent_type === 'video_transcription') {
         return <VideoTranscriptionView />
+    }
+
+    // Render avatar UI for avatar agents
+    if (selectedAgent?.agent_type === 'avatar') {
+        return <AvatarView agent={selectedAgent} />
     }
 
     // Render translation UI for translation agents

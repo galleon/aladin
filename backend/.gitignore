@@ -3,4 +3,7 @@ dist/
 .env
 *.log
 .DS_Store
+# SQLite test database files
+*.db
+file::memory:
 

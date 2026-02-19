@@ -14,9 +14,13 @@ interface Agent {
     description?: string
     llm_model: string | null
     temperature: number | null
-    agent_type?: 'rag' | 'translation' | 'video_transcription'
+    agent_type?: 'rag' | 'translation' | 'video_transcription' | 'avatar'
     target_language?: string
     model_available?: boolean // Whether the LLM model is currently available
+    avatar_config?: {
+        video_source_url?: string
+        image_url?: string
+    } | null
 }
 
 interface Conversation {

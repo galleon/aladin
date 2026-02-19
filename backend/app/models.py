@@ -40,6 +40,7 @@ class AgentType(str, Enum):
     RAG = "rag"
     TRANSLATION = "translation"
     VIDEO_TRANSCRIPTION = "video_transcription"
+    AVATAR = "avatar"
 
 
 class AccessPolicy(str, Enum):
@@ -183,6 +184,9 @@ class Agent(Base):
     whisper_model_size = Column(
         String(50), default="base"
     )  # tiny, base, small, medium, large
+
+    # Avatar-specific settings: {"video_source_url": "...", "image_url": "..."}
+    avatar_config = Column(JSON, nullable=True)
 
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     is_public = Column(Boolean, default=False)
