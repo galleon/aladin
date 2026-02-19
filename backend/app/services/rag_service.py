@@ -19,7 +19,12 @@ logger = structlog.get_logger()
 
 
 class RAGState(TypedDict):
-    """State for the RAG graph."""
+    """State for the RAG graph.
+
+    ``messages`` tracks the LangGraph message history for the ReAct
+    tool-calling loop (used when the agent has tools configured).
+    The ``add_messages`` reducer appends new messages automatically.
+    """
 
     messages: Annotated[list[AnyMessage], add_messages]
     query: str

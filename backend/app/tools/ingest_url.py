@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import structlog
 from langchain_core.tools import tool
@@ -67,7 +67,7 @@ def ingest_url(
             "type": "web",
             "url": url,
             "collection_name": collection_name,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "progress": "0",
             "pages_processed": "0",
             "pages_total": "0",
