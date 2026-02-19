@@ -170,10 +170,6 @@ async def process_file_job(
 
     job_ctx = JobContext(ctx["redis"])
     tracer = get_tracer()
-    db = None
-    if document_id is not None:
-        Document, _ = get_backend_models()
-        db = get_db_session()
 
     with tracer.start_as_current_span("process_file_job") as span:
         span.set_attribute("job_id", job_id)
@@ -187,12 +183,14 @@ async def process_file_job(
             logger.info(f"Processing file job {job_id} for {original_filename}")
 
             # Update document status to processing (data domain flow)
-            if db and document_id is not None:
-                doc = db.query(Document).filter(Document.id == document_id).first()
-                if doc:
-                    doc.status = "processing"
-                    db.commit()
-                    logger.info(f"Updated document {document_id} status to processing")
+            if document_id is not None:
+                Document, _ = get_backend_models()
+                with get_db_session() as db:
+                    doc = db.query(Document).filter(Document.id == document_id).first()
+                    if doc:
+                        doc.status = "processing"
+                        db.commit()
+                        logger.info(f"Updated document {document_id} status to processing")
 
             # Initialize processor
             processor = FileProcessor(
@@ -210,15 +208,17 @@ async def process_file_job(
             )
 
             # Update document status to ready (data domain flow)
-            if db and document_id is not None:
-                doc = db.query(Document).filter(Document.id == document_id).first()
-                if doc:
-                    doc.status = "ready"
-                    doc.chunk_count = result["chunks_created"]
-                    db.commit()
-                    logger.info(
-                        f"Updated document {document_id} status to ready with {result['chunks_created']} chunks"
-                    )
+            if document_id is not None:
+                Document, _ = get_backend_models()
+                with get_db_session() as db:
+                    doc = db.query(Document).filter(Document.id == document_id).first()
+                    if doc:
+                        doc.status = "ready"
+                        doc.chunk_count = result["chunks_created"]
+                        db.commit()
+                        logger.info(
+                            f"Updated document {document_id} status to ready with {result['chunks_created']} chunks"
+                        )
 
             await job_ctx.mark_job_completed(job_id, result["chunks_created"])
             logger.info(
@@ -237,20 +237,19 @@ async def process_file_job(
             await job_ctx.mark_job_failed(job_id, str(e))
 
             # Update document status to failed (data domain flow)
-            if db and document_id is not None:
+            if document_id is not None:
                 try:
-                    doc = db.query(Document).filter(Document.id == document_id).first()
-                    if doc:
-                        doc.status = "failed"
-                        doc.error_message = str(e)
-                        db.commit()
-                        logger.info(f"Updated document {document_id} status to failed")
+                    Document, _ = get_backend_models()
+                    with get_db_session() as db:
+                        doc = db.query(Document).filter(Document.id == document_id).first()
+                        if doc:
+                            doc.status = "failed"
+                            doc.error_message = str(e)
+                            db.commit()
+                            logger.info(f"Updated document {document_id} status to failed")
                 except Exception as db_error:
                     logger.error(f"Failed to update document status: {db_error}")
             raise
-        finally:
-            if db:
-                db.close()
 
 
 async def process_video_job(
@@ -288,18 +287,17 @@ async def process_video_job(
         span.set_attribute("collection", collection_name)
         span.set_attribute("document_id", document_id)
 
-        db = None
         try:
             await job_ctx.mark_job_started(job_id)
             logger.info(f"Processing video job {job_id} for {original_filename}")
 
             # Update document status to processing
-            db = get_db_session()
-            doc = db.query(Document).filter(Document.id == document_id).first()
-            if doc:
-                doc.status = "processing"
-                db.commit()
-                logger.info(f"Updated document {document_id} status to processing")
+            with get_db_session() as db:
+                doc = db.query(Document).filter(Document.id == document_id).first()
+                if doc:
+                    doc.status = "processing"
+                    db.commit()
+                    logger.info(f"Updated document {document_id} status to processing")
 
             # Initialize processor
             processor = VideoProcessor(
@@ -323,7 +321,7 @@ async def process_video_job(
             )
 
             # Update document status to ready
-            if db:
+            with get_db_session() as db:
                 doc = db.query(Document).filter(Document.id == document_id).first()
                 if doc:
                     doc.status = "ready"
@@ -346,21 +344,18 @@ async def process_video_job(
             await job_ctx.mark_job_failed(job_id, str(e))
 
             # Update document status to failed
-            if db:
-                try:
+            try:
+                with get_db_session() as db:
                     doc = db.query(Document).filter(Document.id == document_id).first()
                     if doc:
                         doc.status = "failed"
                         doc.error_message = str(e)
                         db.commit()
                         logger.info(f"Updated document {document_id} status to failed")
-                except Exception as db_error:
-                    logger.error(f"Failed to update document status: {db_error}")
+            except Exception as db_error:
+                logger.error(f"Failed to update document status: {db_error}")
 
             raise
-        finally:
-            if db:
-                db.close()
 
 
 async def startup(ctx: dict):

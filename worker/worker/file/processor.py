@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import threading
 import time
 import uuid
 from typing import List, Optional
@@ -40,6 +41,9 @@ from .loader import _get_docling_prompt
 from .chunker import create_chunks_from_content
 
 logger = logging.getLogger(__name__)
+
+# Global lock for thread-safe environment variable manipulation
+_env_lock = threading.Lock()
 
 
 class FileProcessor:
@@ -105,23 +109,26 @@ class FileProcessor:
     def chunker(self) -> Optional[HybridChunker]:
         if self._chunker is None and self.docling_model:
             try:
-                original_api_base = os.environ.get("OPENAI_API_BASE")
-                original_api_key = os.environ.get("OPENAI_API_KEY")
-                if settings.LLM_API_BASE:
-                    os.environ["OPENAI_API_BASE"] = settings.LLM_API_BASE
-                if settings.LLM_API_KEY:
-                    os.environ["OPENAI_API_KEY"] = settings.LLM_API_KEY
-                try:
-                    self._chunker = HybridChunker(tokenizer=self.docling_model)
-                finally:
-                    if original_api_base:
-                        os.environ["OPENAI_API_BASE"] = original_api_base
-                    elif "OPENAI_API_BASE" in os.environ and not original_api_base:
-                        del os.environ["OPENAI_API_BASE"]
-                    if original_api_key:
-                        os.environ["OPENAI_API_KEY"] = original_api_key
-                    elif "OPENAI_API_KEY" in os.environ and not original_api_key:
-                        del os.environ["OPENAI_API_KEY"]
+                # Use lock to ensure thread-safe environment variable manipulation
+                # HybridChunker reads OPENAI_API_BASE/KEY from environment
+                with _env_lock:
+                    original_api_base = os.environ.get("OPENAI_API_BASE")
+                    original_api_key = os.environ.get("OPENAI_API_KEY")
+                    if settings.LLM_API_BASE:
+                        os.environ["OPENAI_API_BASE"] = settings.LLM_API_BASE
+                    if settings.LLM_API_KEY:
+                        os.environ["OPENAI_API_KEY"] = settings.LLM_API_KEY
+                    try:
+                        self._chunker = HybridChunker(tokenizer=self.docling_model)
+                    finally:
+                        if original_api_base:
+                            os.environ["OPENAI_API_BASE"] = original_api_base
+                        elif "OPENAI_API_BASE" in os.environ and not original_api_base:
+                            del os.environ["OPENAI_API_BASE"]
+                        if original_api_key:
+                            os.environ["OPENAI_API_KEY"] = original_api_key
+                        elif "OPENAI_API_KEY" in os.environ and not original_api_key:
+                            del os.environ["OPENAI_API_KEY"]
             except Exception as e:
                 logger.warning("Failed to initialize HybridChunker: %s", e)
                 return None
@@ -137,6 +144,24 @@ class FileProcessor:
             span.set_attribute("filename", original_filename)
             span.set_attribute("file_path", file_path)
             start_time = time.time()
+
+            # Validate file_path to prevent path traversal attacks
+            from pathlib import Path
+            try:
+                upload_dir = Path(settings.UPLOAD_DIR).resolve()
+                target_path = Path(file_path).resolve()
+
+                # Use is_relative_to (safe against prefix collisions like
+                # /upload_dir_evil matching /upload_dir)
+                if not target_path.is_relative_to(upload_dir):
+                    error_msg = f"Path traversal attempt detected: {file_path}"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+
+                file_path = str(target_path)
+            except (ValueError, OSError) as e:
+                logger.error("Invalid file path: %s - %s", file_path, e)
+                raise ValueError(f"Invalid file path: {file_path}") from e
 
             await self._ensure_collection()
 

@@ -1,9 +1,10 @@
 """Database configuration and session management for ingestion worker."""
 import sys
 import os
+from contextlib import contextmanager
 from pathlib import Path
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import NullPool
 import logging
 
@@ -14,21 +15,36 @@ logger = logging.getLogger(__name__)
 # Database URL from settings
 DATABASE_URL = settings.DATABASE_URL
 
-# Create engine
+# Create engine with connection timeout
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,
     pool_pre_ping=True,
     echo=False,
+    connect_args={"connect_timeout": 10},
 )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+@contextmanager
 def get_db_session():
-    """Get a database session. Caller must close it."""
-    return SessionLocal()
+    """
+    Get a database session with automatic cleanup.
+    Usage:
+        with get_db_session() as session:
+            # use session
+            session.commit()
+    """
+    session = SessionLocal()
+    try:
+        yield session
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def get_backend_models():

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
-from .config import settings
+from .config import settings, DEFAULT_SECRET_KEY
 from .database import engine, Base
 from .routers import (
     auth,
@@ -28,6 +28,22 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     logger.info("Starting ALADIN Platform")
+    
+    # Validate SECRET_KEY in non-development environments
+    if settings.ENVIRONMENT != "development" and settings.SECRET_KEY == DEFAULT_SECRET_KEY:
+        error_msg = (
+            "SECURITY ERROR: Default SECRET_KEY is being used in a non-development environment. "
+            "Please set a strong SECRET_KEY in your environment variables (minimum 32 characters)."
+        )
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    
+    if len(settings.SECRET_KEY) < 32:
+        logger.warning(
+            "SECRET_KEY is shorter than 32 characters. Recommended minimum is 32 characters for security.",
+            key_length=len(settings.SECRET_KEY)
+        )
+    
     logger.info(
         "Video transcription",
         available=bool(settings.WHISPER_API_BASE),

@@ -24,27 +24,27 @@
 
 ## Critical
 
-- [ ] **SSRF in web crawler** — `worker/worker/web/crawler.py` accepts any user-supplied URL without validation. An attacker could target internal IPs (127.0.0.1, 169.254.169.254 metadata endpoints, 10.x private ranges). Block private IP ranges and cloud metadata endpoints.
+- [x] **SSRF in web crawler** — Fixed: Added `is_safe_url()` validation that blocks private IP ranges per RFC 1918 (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), loopback addresses, link-local addresses, and cloud metadata endpoints.
 
 - [ ] **JWT tokens stored in localStorage** — `chat-ui/src/store.ts:162` persists JWT to localStorage via Zustand `persist`. Any XSS can steal tokens. Migrate to httpOnly/Secure/SameSite cookies or add token expiration checks client-side.
 
-- [ ] **Unsafe `os.environ` mutation in file processor** — `worker/worker/file/processor.py:108-124` modifies global `os.environ` to set OpenAI credentials for HybridChunker. Not thread-safe — concurrent workers could use wrong API keys. Pass credentials as constructor params instead.
+- [x] **Unsafe `os.environ` mutation in file processor** — Fixed: Added thread-safe lock (`threading.Lock()`) to ensure concurrent workers don't interfere with environment variable manipulation for HybridChunker initialization.
 
-- [ ] **Weak default SECRET_KEY** — `backend/app/config.py:35` defaults to `"your-secret-key-change-in-production-min-32-chars"`. Add a startup check that refuses to start with the default key when `ENVIRONMENT != development`.
+- [x] **Weak default SECRET_KEY** — Fixed: Added startup validation that checks against `DEFAULT_SECRET_KEY` constant and refuses to start in non-development environments with the default key.
 
 ## High — Security
 
-- [ ] **Path traversal in file processor** — `worker/worker/file/processor.py:185-187` uses `file_path` directly without validating it's within `UPLOAD_DIR`. Use `pathlib.Path.resolve()` and verify prefix.
+- [x] **Path traversal in file processor** — Fixed: Added path validation using `pathlib.Path.resolve()` to ensure all file paths are within `UPLOAD_DIR` before processing.
 
 - [ ] **No rate limiting** — `backend/app/main.py` has no rate limiting on any endpoint. Add `slowapi` or similar, especially on auth endpoints and LLM-calling routes.
 
-- [ ] **Missing CSP headers** — Neither `frontend/nginx.conf` nor `chat-ui/nginx.conf` set Content-Security-Policy headers. Add CSP to prevent XSS/injection.
+- [x] **Missing CSP headers** — Fixed: Added Content-Security-Policy headers to both `frontend/nginx.conf` and `chat-ui/nginx.conf` with additional security headers (X-Content-Type-Options, X-Frame-Options, etc.).
 
 - [ ] **No CSRF protection** — `chat-ui/src/api.ts` sends state-changing requests without CSRF tokens. Add `SameSite=Strict` cookies or `X-CSRF-Token` header.
 
-- [ ] **XSS risk in markdown rendering** — `frontend/src/pages/DataDomainDetail.tsx:306-322` uses ReactMarkdown without `rehype-sanitize`. User-provided VLM prompts could contain malicious content.
+- [x] **XSS risk in markdown rendering** — Fixed: Added `rehype-sanitize` plugin to all ReactMarkdown components in both frontend and chat-ui.
 
-- [ ] **Error messages leak internals** — `backend/app/routers/conversations.py:546-564` exposes raw exception strings (API keys, model names, config) to clients. Log details server-side, return generic messages.
+- [x] **Error messages leak internals** — Fixed: Sanitized error messages in `backend/app/routers/conversations.py` to return generic error messages while logging detailed errors server-side.
 
 ## High — Reliability
 
@@ -52,11 +52,11 @@
 
 - [ ] **N+1 + external call in agent listing** — `backend/app/routers/agents.py:53-54` calls `model_service.get_llm_models()` (external API) on every list request. Cache model list with TTL.
 
-- [ ] **No React Error Boundary** — `frontend/src/App.tsx` has no Error Boundary. Any runtime error crashes the entire app with a blank screen. Wrap routes in an Error Boundary with fallback UI.
+- [x] **No React Error Boundary** — Fixed: Added `ErrorBoundary` component wrapping the entire app in `frontend/src/App.tsx` with graceful error UI.
 
 - [ ] **Zombie jobs — no stuck-job recovery** — `worker/worker/main.py` sets job status to "processing" but has no timeout-based recovery if the worker crashes mid-job. Add a periodic sweep for jobs stuck in "processing" beyond `JOB_TIMEOUT`.
 
-- [ ] **Insecure temp file handling** — `worker/worker/video_processor.py:168-171` uses `delete=False` without guaranteed cleanup. If cleanup fails, temp files accumulate. Use context manager with `delete=True` or worker-specific temp directory.
+- [x] **Insecure temp file handling** — Fixed: Improved temp file cleanup in `worker/worker/video_processor.py` with robust try-catch error handling in finally block.
 
 ## Medium — Backend
 
@@ -64,9 +64,9 @@
 
 - [ ] **VLM API keys stored in plaintext** — `backend/app/models.py:108-109` stores VLM keys in DB without encryption. Consider a secrets vault or at-rest encryption.
 
-- [ ] **Database session leak in worker** — `worker/shared/database.py:29-31` returns session without enforcing close. Callers can forget `session.close()`. Return a context manager instead.
+- [x] **Database session leak in worker** — Fixed: Refactored `worker/shared/database.py` to use context manager pattern with automatic session cleanup and rollback on errors.
 
-- [ ] **No connection timeout on worker DB** — `worker/shared/database.py:18-23` uses `NullPool` with no query timeout. Add `connect_args={"connect_timeout": 10}` and statement timeout.
+- [x] **No connection timeout on worker DB** — Fixed: Added `connect_args={"connect_timeout": 10}` to database engine configuration in `worker/shared/database.py`.
 
 - [ ] **Partial embedding failures silently ignored** — `worker/worker/file/processor.py:420-445` sends batches of 100 chunks but doesn't validate response length matches batch size. Log and retry partial failures.
 

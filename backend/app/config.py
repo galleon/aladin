@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "RAG Agent Platform"
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     CORS_ORIGINS: list[str] = (
         os.getenv("CORS_ORIGINS", "*").split(",")
         if os.getenv("CORS_ORIGINS")
@@ -127,6 +128,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Default SECRET_KEY value for validation
+DEFAULT_SECRET_KEY = "your-secret-key-change-in-production-min-32-chars"
 
 # Fallback prompt templates when VIDEO_PROMPT_LIBRARY_PATH is missing or invalid
 _FALLBACK_PROMPT_LIBRARY = {
