@@ -113,6 +113,9 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
 
+    # MCP (Model Context Protocol) server
+    MCP_SERVER_URL: str | None = os.getenv("MCP_SERVER_URL", None)
+
     # Email (for transcription job completion notification)
     EMAIL_ENABLED: bool = os.getenv("EMAIL_ENABLED", "false").lower() == "true"
     SMTP_HOST: str | None = os.getenv("SMTP_HOST")

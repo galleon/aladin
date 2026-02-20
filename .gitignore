@@ -68,6 +68,8 @@ docker-compose.override.yml
 *.db
 *.sqlite
 *.sqlite3
+# SQLite shared-cache URI artifact created by pytest (e.g. file::memory:)
+*::memory:*
 postgres_data/
 
 # Temporary files

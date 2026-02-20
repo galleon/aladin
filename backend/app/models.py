@@ -176,6 +176,9 @@ class Agent(Base):
     target_language = Column(String(50), default="en")  # Target language code
     supported_languages = Column(JSON)  # List of supported language codes
 
+    # Dynamic tools for tool-calling agents
+    tools = Column(JSON, nullable=False, default=list)  # List of tool name strings
+
     # Test data (optional)
     test_questions = Column(JSON)  # List of {question, reference_answer}
 

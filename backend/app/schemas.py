@@ -211,6 +211,7 @@ class RAGAgentCreate(BaseModel):
     retrieval_k: int = Field(5, ge=1, le=20)
     is_public: bool = False
     test_questions: list[dict] | None = None
+    tools: list[str] | None = []
 
 
 class TranslationAgentCreate(BaseModel):
@@ -263,6 +264,7 @@ class AgentUpdate(BaseModel):
     supported_languages: list[str] | None = None
     is_public: bool | None = None
     test_questions: list[dict] | None = None
+    tools: list[str] | None = None
 
 
 class AgentResponse(BaseModel):
@@ -289,6 +291,7 @@ class AgentResponse(BaseModel):
     owner_id: int
     is_public: bool
     test_questions: list[dict] | None
+    tools: list[str] | None = []
     model_available: bool = True  # Whether the LLM model is currently available
     created_at: datetime
     updated_at: datetime
