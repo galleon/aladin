@@ -40,3 +40,10 @@ model_list:
       model: openai/bge-reranker-v2-m3
       api_base: http://spark-2.internal:8004/v1
       api_key: DUMMY
+
+  # TTS: Kokoro-82M adapter on dgx2 (spark-cedf.local)
+  - model_name: tts
+    litellm_params:
+      model: openai/tts-1
+      api_base: http://spark-2.internal:8011/v1
+      api_key: DUMMY

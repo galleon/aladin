@@ -114,8 +114,8 @@ services:
             WHISPER_API_BASE: http://spark-1.internal:4000/v1
             WHISPER_API_KEY: sk-dummy-key
             STT_MODEL: stt
-            # TTS — same reasoning
-            TTS_API_BASE: http://spark-1.internal:4000/v1
+            # TTS — routed via aladin LiteLLM (spark-2.internal:8011)
+            TTS_API_BASE: http://litellm:4000/v1
             TTS_API_KEY: sk-dummy-key
             TTS_MODEL: tts
             # Telemetry (optional)
