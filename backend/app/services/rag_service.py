@@ -385,6 +385,16 @@ Context:
         from ..tools import get_tools_by_names
 
         tools = get_tools_by_names(tool_names)
+        # Replace the generic ingest_url with an agent-contextualised version
+        # that creates a PostgreSQL Job record (visible in /api/jobs).
+        if "ingest_url" in tool_names:
+            from ..tools.ingest_url import make_ingest_url_tool
+            tools = [
+                make_ingest_url_tool(agent.id, agent.owner_id)
+                if getattr(t, "name", None) == "ingest_url"
+                else t
+                for t in tools
+            ]
         if not tools:
             logger.warning(
                 "No valid tools resolved for agent, falling back to classic chain",
@@ -408,21 +418,37 @@ Context:
             return {"messages": [response]}
 
         def should_continue(state: RAGState) -> str:
-            """Route to 'tools' if the last message has tool calls, else END."""
+            """Route to 'tools' if the last message has tool calls, else 'finalize'."""
             last = state["messages"][-1]
             if hasattr(last, "tool_calls") and last.tool_calls:
                 return "tools"
-            return END
+            return "finalize"
+
+        def finalize_node(state: RAGState) -> dict:
+            """Extract response text and token counts from the last AI message."""
+            last_msg = state["messages"][-1]
+            response_text = self._extract_response_text(last_msg)
+            usage = getattr(last_msg, "usage_metadata", None)
+            input_tokens = (usage.get("input_tokens", 0) or 0) if usage else 0
+            output_tokens = (usage.get("output_tokens", 0) or 0) if usage else 0
+            return {
+                "response": response_text,
+                "sources": [],
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            }
 
         tool_node = ToolNode(tools)
 
         workflow = StateGraph(RAGState)
         workflow.add_node("agent", agent_node)
         workflow.add_node("tools", tool_node)
+        workflow.add_node("finalize", finalize_node)
 
         workflow.set_entry_point("agent")
-        workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+        workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "finalize": "finalize"})
         workflow.add_edge("tools", "agent")
+        workflow.add_edge("finalize", END)
 
         return workflow.compile()
 
@@ -445,7 +471,7 @@ Context:
 
             # Initial state
             initial_state: RAGState = {
-                "messages": [],
+                "messages": [HumanMessage(content=query)],
                 "query": query,
                 "agent_config": {
                     "model": agent.llm_model,
