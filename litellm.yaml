@@ -1,0 +1,42 @@
+general_settings:
+  set_verbose: false
+  json_logs: true
+
+litellm_settings:
+  log_responses: true
+  log_requests: true
+
+model_list:
+  # ---- Node A: spark-9965.local (spark-1.internal) ----
+
+  - model_name: granite_docling
+    litellm_params:
+      model: openai/granite-docling-258m
+      api_base: http://spark-1.internal:8000/v1
+      api_key: DUMMY
+
+  - model_name: cosmos
+    litellm_params:
+      model: openai/cosmos-reason2-8b
+      api_base: http://spark-1.internal:8001/v1
+      api_key: DUMMY
+
+  # ---- Node B: spark-cedf.local (spark-2.internal) ----
+
+  - model_name: thinking
+    litellm_params:
+      model: openai/gpt-oss-20b
+      api_base: http://spark-2.internal:8002/v1
+      api_key: DUMMY
+
+  - model_name: embeddings
+    litellm_params:
+      model: openai/bge-large-en-v1.5
+      api_base: http://spark-2.internal:8003/v1
+      api_key: DUMMY
+
+  - model_name: reranker
+    litellm_params:
+      model: openai/bge-reranker-v2-m3
+      api_base: http://spark-2.internal:8004/v1
+      api_key: DUMMY
