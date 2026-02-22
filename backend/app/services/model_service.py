@@ -89,12 +89,13 @@ class ModelService:
             )
             return []
 
-        # Exclude embedding, docling, reranker and similar non-LLM models
-        # (they should only be chosen in Data Domain / ingestion pipeline)
+        # Exclude non-chat models from the LLM picker
+        # (embeddings, docling, reranker, STT, TTS are fixed-function and configured separately)
         _EXCLUDE_PATTERNS = (
             "embedding", "embed-", "bge-", "e5-", "nomic-embed", "text-embedding",
             "docling", "granite-docling",
-            "rerank", "reranker", "bge-reranker", "bge-reranker-",
+            "rerank", "reranker", "bge-reranker",
+            "tts", "stt", "whisper", "asr", "kokoro",
         )
 
         models = []

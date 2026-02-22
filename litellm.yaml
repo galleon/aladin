@@ -7,13 +7,10 @@ litellm_settings:
   log_requests: true
 
 model_list:
-  # ---- Node A: spark-9965.local (spark-1.internal) ----
+  # LLM models only — used for chat/agent completions and frontend model discovery.
+  # Embedding, docling, VLM, TTS, and STT are accessed directly by the backend (not via this proxy).
 
-  - model_name: granite_docling
-    litellm_params:
-      model: openai/granite-docling-258m
-      api_base: http://spark-1.internal:8000/v1
-      api_key: DUMMY
+  # ---- Node A: spark-9965.local (spark-1.internal) ----
 
   - model_name: cosmos
     litellm_params:
@@ -27,23 +24,4 @@ model_list:
     litellm_params:
       model: openai/gpt-oss-20b
       api_base: http://spark-2.internal:8002/v1
-      api_key: DUMMY
-
-  - model_name: embeddings
-    litellm_params:
-      model: openai/bge-large-en-v1.5
-      api_base: http://spark-2.internal:8003/v1
-      api_key: DUMMY
-
-  - model_name: reranker
-    litellm_params:
-      model: openai/bge-reranker-v2-m3
-      api_base: http://spark-2.internal:8004/v1
-      api_key: DUMMY
-
-  # TTS: Kokoro-82M adapter on dgx2 (spark-cedf.local)
-  - model_name: tts
-    litellm_params:
-      model: openai/tts-1
-      api_base: http://spark-2.internal:8011/v1
       api_key: DUMMY

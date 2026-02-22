@@ -100,24 +100,25 @@ services:
             QDRANT_PORT: 6333
             # Security
             SECRET_KEY: ${SECRET_KEY:-your-super-secret-key-change-in-production-min-32-chars}
-            # LLM/Embedding
+            # LLM — via aladin LiteLLM (cosmos + thinking aliases, for multi-model UI discovery)
             LLM_API_BASE: http://litellm:4000/v1
             LLM_API_KEY: sk-dummy-key
-            EMBEDDING_API_BASE: http://litellm:4000/v1
+            # Embeddings — direct to dgx2 vLLM
+            EMBEDDING_API_BASE: http://spark-2.internal:8003/v1
             EMBEDDING_API_KEY: sk-dummy-key
-            EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddings}
-            EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
+            EMBEDDING_MODEL: bge-large-en-v1.5
+            EMBEDDING_DIMENSION: 1024
             # Document processing
             MARKER_USE_LLM: ${MARKER_USE_LLM:-false}
             UPLOAD_DIR: /app/uploads
-            # STT/Whisper — routed via spark-9965's LiteLLM (stt service is internal to that node)
+            # STT/Whisper — via dgx1 LiteLLM (stt-adapter is internal to that node)
             WHISPER_API_BASE: http://spark-1.internal:4000/v1
             WHISPER_API_KEY: sk-dummy-key
             STT_MODEL: stt
-            # TTS — routed via aladin LiteLLM (spark-2.internal:8011)
-            TTS_API_BASE: http://litellm:4000/v1
+            # TTS — direct to dgx2 Kokoro adapter
+            TTS_API_BASE: http://spark-2.internal:8011/v1
             TTS_API_KEY: sk-dummy-key
-            TTS_MODEL: tts
+            TTS_MODEL: kokoro-82m
             # Telemetry (optional)
             OTEL_ENABLED: ${OTEL_ENABLED:-false}
             OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
@@ -163,7 +164,7 @@ services:
             WHISPER_API_BASE: http://spark-1.internal:4000/v1
             WHISPER_API_KEY: sk-dummy-key
             STT_MODEL: stt
-            # LLM (for subtitle translation)
+            # LLM (for subtitle translation) — via aladin LiteLLM
             LLM_API_BASE: http://litellm:4000/v1
             LLM_API_KEY: sk-dummy-key
             # Storage
@@ -179,18 +180,19 @@ services:
             # Ingestion (for ingestion_* handlers)
             QDRANT_HOST: qdrant
             QDRANT_PORT: 6333
-            # Embeddings via aladin LiteLLM
-            EMBEDDING_API_BASE: http://litellm:4000/v1
+            # Embeddings — direct to dgx2 vLLM
+            EMBEDDING_API_BASE: http://spark-2.internal:8003/v1
             EMBEDDING_API_KEY: sk-dummy-key
-            EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddings}
-            EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1024}
+            EMBEDDING_MODEL: bge-large-en-v1.5
+            EMBEDDING_DIMENSION: 1024
             EMBEDDING_MAX_INPUT_CHARS: ${EMBEDDING_MAX_INPUT_CHARS:-1024}
-            # Docling and VLM via aladin LiteLLM
-            DOCLING_API_BASE: http://litellm:4000/v1
-            DOCLING_MODEL: ${DOCLING_MODEL:-granite_docling}
-            VLM_API_BASE: http://litellm:4000/v1
+            # Docling — direct to dgx1 vLLM
+            DOCLING_API_BASE: http://spark-1.internal:8000/v1
+            DOCLING_MODEL: granite-docling-258m
+            # VLM — direct to dgx1 vLLM
+            VLM_API_BASE: http://spark-1.internal:8001/v1
             VLM_API_KEY: sk-dummy-key
-            VLM_MODEL: ${VLM_MODEL:-cosmos}
+            VLM_MODEL: cosmos-reason2-8b
             # YOLO/Roboflow Inference API (video object tracking)
             YOLO_API_URL: ${YOLO_API_URL:-}
             YOLO_API_KEY: ${YOLO_API_KEY:-}
