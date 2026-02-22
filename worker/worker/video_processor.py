@@ -78,6 +78,7 @@ class VideoProcessor:
                 api_base=api_base,
                 api_key=api_key,
                 model_id=model_id or "gpt-4o",
+                max_side=settings.VLM_INPUT_MAX_SIDE,
             )
         else:
             logger.warning("No VLM API configured, using DummyVLMBackend")

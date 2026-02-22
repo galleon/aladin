@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     VLM_API_BASE: str = os.getenv("VLM_API_BASE", "http://localhost:8000/v1")
     VLM_API_KEY: str = os.getenv("VLM_API_KEY", "sk-dummy-key")
     VLM_MODEL: str = os.getenv("VLM_MODEL", "llava-v1.6-34b")
+    # Max pixel side for frames sent to VLM (0 = auto: 640 for cosmos-reason2, no-resize otherwise)
+    # cosmos-reason2-8b has a 32768-token context; 640px gives ~230k px/frame = ~9.5k visual tokens
+    # for 8 frames — well within budget. Override with e.g. VLM_INPUT_MAX_SIDE=480 for tighter budgets.
+    VLM_INPUT_MAX_SIDE: int = int(os.getenv("VLM_INPUT_MAX_SIDE", "0"))
 
     # YOLO/Roboflow Inference API for object detection (video tracking)
     YOLO_API_URL: Optional[str] = os.getenv("YOLO_API_URL")

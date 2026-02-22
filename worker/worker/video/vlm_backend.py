@@ -14,7 +14,7 @@ import numpy as np
 from openai import OpenAI
 
 from .schemas import Tracklet
-from .prompts import PROCEDURE_PROMPT_ID, RACE_PROMPT_ID, get_prompt
+from .prompts import PROCEDURE_PROMPT_ID, RACE_PROMPT_ID, get_prompt, is_cosmos_reason2_model
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +92,29 @@ class DummyVLMBackend:
         }
 
 
-def _frame_to_base64_jpeg(frame_bgr: np.ndarray) -> str:
-    """Encode BGR numpy frame to base64 JPEG."""
+# cosmos-reason2-8b: max context 32768 tokens. At 640px max side (640×360 for 16:9),
+# each frame is ~230k pixels ≈ 1.2k visual tokens; 8 frames ≈ 9.5k — well within budget.
+_COSMOS_R2_DEFAULT_MAX_SIDE = 640
+_COSMOS_R2_SYSTEM_PROMPT = (
+    "You are a video analysis assistant. Reason carefully about the provided frames, "
+    "then output a structured JSON response.\n"
+    "Use <think>...</think> for your reasoning, then write the final JSON answer after the closing tag."
+)
+
+
+def _resize_frame(frame_bgr: np.ndarray, max_side: int) -> np.ndarray:
+    """Resize frame so its longest side is at most max_side, preserving aspect ratio."""
+    h, w = frame_bgr.shape[:2]
+    if max(h, w) <= max_side:
+        return frame_bgr
+    scale = max_side / max(h, w)
+    return cv2.resize(frame_bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+
+def _frame_to_base64_jpeg(frame_bgr: np.ndarray, max_side: int = 0) -> str:
+    """Encode BGR numpy frame to base64 JPEG. Resizes to max_side if > 0."""
+    if max_side > 0:
+        frame_bgr = _resize_frame(frame_bgr, max_side)
     ok, buf = cv2.imencode(".jpg", frame_bgr)
     if not ok or buf is None:
         return ""
@@ -275,10 +296,13 @@ class OpenAICompatibleVLMBackend:
         api_base: str,
         api_key: str | None = None,
         model_id: str = "gpt-4o",
+        max_side: int = 0,
     ):
         self.api_base = api_base.rstrip("/")
         self.api_key = api_key or "sk-dummy"
         self.model_id = model_id
+        # 0 = auto: uses _COSMOS_R2_DEFAULT_MAX_SIDE for cosmos-reason2, no resize otherwise
+        self.max_side = max_side
 
     def analyze_segment(
         self,
@@ -292,6 +316,13 @@ class OpenAICompatibleVLMBackend:
         extra_context: str | None = None,
         custom_prompt: str | None = None,
     ) -> dict[str, Any]:
+        is_cosmos = is_cosmos_reason2_model(self.model_id)
+        # Frame resize: auto-detect per model when max_side == 0.
+        # cosmos-reason2-8b: 32768-token context; 640px max side keeps 8 frames within budget.
+        effective_max_side = self.max_side if self.max_side > 0 else (
+            _COSMOS_R2_DEFAULT_MAX_SIDE if is_cosmos else 0
+        )
+
         prompt_id = PROCEDURE_PROMPT_ID if mode == "procedure" else RACE_PROMPT_ID
         num_frames = len([f for f in frames_bgr if f is not None])
         tracks_json = extra_context
@@ -306,19 +337,24 @@ class OpenAICompatibleVLMBackend:
         else:
             prompt = get_prompt(mode, t_start, t_end, num_frames, tracks_json, model_id=self.model_id)
 
-        # Build content: text + images (up to 8 frames to avoid token limits)
-        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
-        valid_frames = [(f, t) for f, t in zip(frames_bgr, frame_times) if f is not None and isinstance(f, np.ndarray)]
+        # Encode frames (resized) — images go FIRST in content (NVIDIA ordering)
+        valid_frames = [
+            (f, t) for f, t in zip(frames_bgr, frame_times)
+            if f is not None and isinstance(f, np.ndarray)
+        ]
         max_images = 8
-        for i, (frame, t) in enumerate(valid_frames[:max_images]):
-            b64 = _frame_to_base64_jpeg(frame)
+        image_content: list[dict[str, Any]] = []
+        used_times: list[float] = []
+        for frame, t in valid_frames[:max_images]:
+            b64 = _frame_to_base64_jpeg(frame, max_side=effective_max_side)
             if b64:
-                content.append({
+                image_content.append({
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
                 })
+                used_times.append(t)
 
-        if not content or (len(content) == 1 and not valid_frames):
+        if not image_content:
             return {
                 "caption": f"[No frames] {video_id} [{t_start:.1f}s–{t_end:.1f}s]",
                 "events": [],
@@ -328,13 +364,30 @@ class OpenAICompatibleVLMBackend:
                 "prompt_id": prompt_id,
             }
 
+        # Prepend per-frame timestamps so the model can ground events to exact times
+        ts_str = ", ".join(f"{t:.2f}s" for t in used_times)
+        timestamp_header = (
+            f"These {len(image_content)} frames were sampled from the video segment "
+            f"[{t_start:.1f}s\u2013{t_end:.1f}s] at timestamps: {ts_str}."
+        )
+        full_prompt = f"{timestamp_header}\n\n{prompt}"
+
+        # Images before text (NVIDIA/cosmos-reason2 pattern)
+        content: list[dict[str, Any]] = image_content + [{"type": "text", "text": full_prompt}]
+
+        # System prompt: cosmos-reason2 benefits from explicit reasoning-format instruction
+        messages: list[dict[str, Any]] = []
+        if is_cosmos:
+            messages.append({"role": "system", "content": _COSMOS_R2_SYSTEM_PROMPT})
+        messages.append({"role": "user", "content": content})
+
         try:
             base = self.api_base.rstrip("/")
             base_url = base if base.endswith("v1") else f"{base}/v1"
             client = OpenAI(api_key=self.api_key, base_url=base_url)
             resp = client.chat.completions.create(
                 model=self.model_id,
-                messages=[{"role": "user", "content": content}],
+                messages=messages,
                 max_tokens=2048,
             )
             # Log raw API response (formatted for review)
