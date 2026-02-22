@@ -105,7 +105,6 @@ class TranslationService:
             # Use longer timeout for models that might take time (e.g., "thinking" models)
             # Default to 300 seconds (5 minutes) for subtitle translation
             timeout_value = 300.0 if "thinking" in model.lower() else 120.0
-
             self._llm_cache[cache_key] = ChatOpenAI(
                 model=model,
                 temperature=temperature,

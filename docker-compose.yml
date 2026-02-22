@@ -54,24 +54,6 @@ services:
         profiles:
             - observability
 
-    litellm:
-        image: ghcr.io/berriai/litellm:main-latest
-        ports:
-            - "4000:4000"
-        volumes:
-            - ./litellm.yaml:/app/config.yaml:ro
-        command: ["--config", "/app/config.yaml", "--port", "4000"]
-        extra_hosts:
-            - "spark-1.internal:${SPARK_1_IP:-192.168.1.72}"
-            - "spark-2.internal:${SPARK_2_IP:-192.168.1.49}"
-        restart: on-failure
-        healthcheck:
-            test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health')"]
-            interval: 15s
-            timeout: 5s
-            retries: 5
-            start_period: 10s
-
     backend:
         build:
             context: .
@@ -100,8 +82,8 @@ services:
             QDRANT_PORT: 6333
             # Security
             SECRET_KEY: ${SECRET_KEY:-your-super-secret-key-change-in-production-min-32-chars}
-            # LLM — via aladin LiteLLM (cosmos + thinking aliases, for multi-model UI discovery)
-            LLM_API_BASE: http://litellm:4000/v1
+            # LLM — direct to dgx2 vLLM (gpt-oss-20b)
+            LLM_API_BASE: http://spark-2.internal:8002/v1
             LLM_API_KEY: sk-dummy-key
             # Embeddings — direct to dgx2 vLLM
             EMBEDDING_API_BASE: http://spark-2.internal:8003/v1
@@ -128,8 +110,6 @@ services:
             redis:
                 condition: service_healthy
             qdrant:
-                condition: service_healthy
-            litellm:
                 condition: service_healthy
         volumes:
             - uploads_data:/app/uploads
@@ -164,8 +144,8 @@ services:
             WHISPER_API_BASE: http://spark-1.internal:4000/v1
             WHISPER_API_KEY: sk-dummy-key
             STT_MODEL: stt
-            # LLM (for subtitle translation) — via aladin LiteLLM
-            LLM_API_BASE: http://litellm:4000/v1
+            # LLM (for subtitle translation) — direct to dgx2 vLLM (gpt-oss-20b)
+            LLM_API_BASE: http://spark-2.internal:8002/v1
             LLM_API_KEY: sk-dummy-key
             # Storage
             UPLOAD_DIR: /app/uploads
@@ -233,8 +213,6 @@ services:
             redis:
                 condition: service_healthy
             qdrant:
-                condition: service_healthy
-            litellm:
                 condition: service_healthy
         volumes:
             - uploads_data:/app/uploads
