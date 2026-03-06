@@ -105,9 +105,9 @@ export default function ChatView() {
             let currentConversations = conversations
             if (!convId) {
                 const res = await createConversation(selectedAgent.id)
-                convId = res.data.id
-                selectConversation(res.data)
-                currentConversations = [res.data, ...conversations]
+                convId = Number(res.data.id)  // normalize: backend returns string id
+                selectConversation({ ...res.data, id: convId })
+                currentConversations = [{ ...res.data, id: convId }, ...conversations]
                 setConversations(currentConversations)
             }
 
@@ -127,14 +127,12 @@ export default function ChatView() {
             // Update conversation title in the list if the backend generated one.
             if (conversation_title !== undefined && conversation_title !== null) {
                 const updatedConvs = currentConversations.map((c: typeof conversations[0]) => {
-                    const cId = typeof c.id === 'string' ? parseInt(c.id) : c.id
-                    return cId === convId ? { ...c, title: conversation_title } : c
+                    return Number(c.id) === convId ? { ...c, title: conversation_title } : c
                 })
                 setConversations(updatedConvs)
 
                 const updatedConv = updatedConvs.find((c: typeof conversations[0]) => {
-                    const cId = typeof c.id === 'string' ? parseInt(c.id) : c.id
-                    return cId === convId
+                    return Number(c.id) === convId
                 })
                 if (updatedConv) {
                     selectConversation(updatedConv)
