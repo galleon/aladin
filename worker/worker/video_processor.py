@@ -9,6 +9,7 @@ import os
 import tempfile
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -176,7 +177,8 @@ class VideoProcessor:
 
             try:
                 # Run video pipeline
-                video_id = f"job_{self.job_id}_{Path(original_filename).stem}"
+                timestamp = datetime.now().strftime("%Y%m%d%H%M")
+                video_id = f"{timestamp}_{self.job_id[:8]}_{Path(original_filename).stem}"
                 summary = run_video_pipeline(
                     path=file_path,
                     out_path=tmp_path,
