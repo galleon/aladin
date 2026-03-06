@@ -100,86 +100,44 @@ export default function ChatView() {
 
         try {
             let convId: number = selectedConversation?.id ?? 0
+            // currentConversations tracks the up-to-date list within this async call,
+            // since the `conversations` closure value is stale after setConversations().
+            let currentConversations = conversations
             if (!convId) {
                 const res = await createConversation(selectedAgent.id)
                 convId = res.data.id
                 selectConversation(res.data)
-                setConversations([res.data, ...conversations])
+                currentConversations = [res.data, ...conversations]
+                setConversations(currentConversations)
             }
 
             const res = await chat(convId, userMessage)
             const { message, sources, conversation_title } = res.data
 
-            // Get messages from store to ensure we have the latest state
-            // We need to update the last message with the response
-            // Since we can't use functional updates, we'll use updateLastMessage first, then setMessages
             updateLastMessage(message.content)
 
-            // Now update with ID and sources - we need to get the current messages from the store
-            // Use a small delay to ensure updateLastMessage has processed
             setTimeout(() => {
-                // Get the latest messages from the store by reading it
-                // Since we can't directly read from store in component, we'll use the messages from the hook
-                // But messages might be stale, so we'll construct the updated array manually
-                // The messages should have been updated by updateLastMessage above
                 setMessages((prev: typeof messages) => {
-                    const updatedMessages = prev.map((m: typeof messages[0], i: number) => {
-                        if (i === prev.length - 1) {
-                            return { ...m, id: message.id, sources }
-                        }
-                        return m
-                    })
-                    return updatedMessages
+                    return prev.map((m: typeof messages[0], i: number) =>
+                        i === prev.length - 1 ? { ...m, id: message.id, sources } : m
+                    )
                 })
             }, 0)
 
-            // Update conversation title if provided in response (generated during chat call)
-            // Always update the conversations list, and selectedConversation if it exists
-            let updatedConvs: typeof conversations = conversations
-
+            // Update conversation title in the list if the backend generated one.
             if (conversation_title !== undefined && conversation_title !== null) {
-                // Update in conversations list (always do this)
-                // Check if conversation exists in list, if not add it
-                const convExists = conversations.some((c: typeof conversations[0]) => {
+                const updatedConvs = currentConversations.map((c: typeof conversations[0]) => {
                     const cId = typeof c.id === 'string' ? parseInt(c.id) : c.id
-                    return cId === convId
+                    return cId === convId ? { ...c, title: conversation_title } : c
                 })
-
-                if (convExists) {
-                    // Update existing conversation
-                    updatedConvs = conversations.map((c: typeof conversations[0]) => {
-                        const cId = typeof c.id === 'string' ? parseInt(c.id) : c.id
-                        return cId === convId ? { ...c, title: conversation_title } : c
-                    })
-                } else {
-                    // Add new conversation to list (in case it wasn't there)
-                    updatedConvs = [{ id: convId, title: conversation_title, agent_id: selectedAgent.id }, ...conversations]
-                }
                 setConversations(updatedConvs)
 
-                // Always ensure the current conversation is selected (don't create new one)
                 const updatedConv = updatedConvs.find((c: typeof conversations[0]) => {
                     const cId = typeof c.id === 'string' ? parseInt(c.id) : c.id
                     return cId === convId
                 })
                 if (updatedConv) {
-                    // Update selectedConversation with the updated title
                     selectConversation(updatedConv)
-                }
-            }
-
-            // Final safety check: ensure we're still on the same conversation after all updates
-            // This prevents the UI from switching to a new conversation or losing selection
-            if (updatedConvs) {
-                const currentConv = updatedConvs.find((c: typeof conversations[0]) => {
-                    const cId = typeof c.id === 'string' ? parseInt(c.id) : c.id
-                    return cId === convId
-                })
-                if (currentConv) {
-                    // Use setTimeout to ensure state updates are processed
-                    setTimeout(() => {
-                        selectConversation(currentConv)
-                    }, 0)
                 }
             }
         } catch (e: any) {
