@@ -5,6 +5,14 @@ import { agentsApi, dataDomainsApi, modelsApi, AgentType } from '../api/client';
 import { Bot, Plus, Trash2, MessageSquare, Loader2, X, Sparkles, AlertCircle, RefreshCw, Languages, Database, Video } from 'lucide-react';
 import { useAuth } from '../App';
 
+const DEFAULT_RAG_SYSTEM_PROMPT =
+  `You are a helpful AI assistant. Answer questions using only the information provided in the context below. Follow these rules strictly:
+1. Use ONLY the provided context — no external knowledge.
+2. Be concise. Use short, direct sentences. Only elaborate when the question genuinely requires it.
+3. NEVER say "based on the context", "according to the documents", or "I cannot find".
+4. NEVER add disclaimers, suggestions, or offer to answer with general knowledge.
+5. Do NOT mention source file names or page numbers in your response — sources are shown separately in the UI.`;
+
 export default function Agents() {
     const { user } = useAuth();
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -16,8 +24,8 @@ export default function Agents() {
         name: '',
         description: '',
         llm_model: '',
-        system_prompt: 'You are a helpful assistant that answers questions based on the provided context. Always cite your sources.',
-        temperature: 0.7,
+        system_prompt: DEFAULT_RAG_SYSTEM_PROMPT,
+        temperature: 0.2,
         top_p: 1.0,
         top_k: 50,
         data_domain_ids: [] as number[],
@@ -128,8 +136,8 @@ export default function Agents() {
             name: '',
             description: '',
             llm_model: modelsData?.models[0]?.id || '',
-            system_prompt: 'You are a helpful assistant that answers questions based on the provided context. Always cite your sources.',
-            temperature: 0.7,
+            system_prompt: DEFAULT_RAG_SYSTEM_PROMPT,
+            temperature: 0.2,
             top_p: 1.0,
             top_k: 50,
             data_domain_ids: [],

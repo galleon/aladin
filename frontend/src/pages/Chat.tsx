@@ -29,52 +29,61 @@ const CONTENT_TYPE_META: Record<string, { label: string; color: string }> = {
   text:       { label: 'Text',   color: 'bg-violet-500/20 text-violet-300 border-violet-500/30' },
 };
 
+/**
+ * Renders a mini page thumbnail fetched from the backend with a coloured
+ * bbox overlay highlighting the chunk's location on the page.
+ *
+ * The page image is fetched lazily (only when the component mounts) and
+ * cached by the browser via the Cache-Control header set by the API.
+ */
 function BboxIndicator({
-  loc, pageWidth, pageHeight, textType,
+  documentId, pageNo, loc, pageWidth, pageHeight, textType,
 }: {
+  documentId: number;
+  pageNo: number;
   loc: [number, number, number, number];
   pageWidth: number | null;
   pageHeight: number | null;
   textType: string | null;
 }) {
-  // Normalise bbox to 0–1 if page dimensions are available, otherwise leave as-is
+  const [pageImgSrc, setPageImgSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    fetch(`/api/documents/${documentId}/pages/${pageNo}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(r.status)))
+      .then((blob) => setPageImgSrc(URL.createObjectURL(blob)))
+      .catch(() => { /* silently skip — no thumbnail available */ });
+  }, [documentId, pageNo]);
+
   const [l, t, r, b] = loc;
   const pw = pageWidth  ?? 595;  // A4 default (points)
   const ph = pageHeight ?? 842;
-
-  // Docling uses bottom-left origin → convert to top-left for CSS
-  // Clamp each value to [0,1] and ensure x1<=x2, y1<=y2 to prevent negative CSS sizes
   const clamp = (v: number) => Math.max(0, Math.min(1, v));
   const x1 = clamp(Math.min(l, r) / pw);
   const x2 = clamp(Math.max(l, r) / pw);
-  const y1 = clamp(1 - Math.max(t, b) / ph);  // flip y (bottom-left → top-left)
+  const y1 = clamp(1 - Math.max(t, b) / ph);  // flip y: Docling bottom-left → CSS top-left
   const y2 = clamp(1 - Math.min(t, b) / ph);
-
   const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+
+  // Don't render the placeholder rectangle until we know whether a page image exists
+  if (!pageImgSrc) return null;
 
   return (
     <div className="mt-2 space-y-1">
-      {/* Mini page thumbnail with bbox overlay */}
       <div
-        className="relative w-full bg-slate-900/60 border border-slate-700/40 rounded overflow-hidden"
-        style={{ paddingTop: `${(ph / pw) * 100}%`, maxWidth: 120 }}
-        title={`Location on page: x ${pct(x1)}–${pct(x2)}, y ${pct(y1)}–${pct(y2)}`}
+        className="relative rounded overflow-hidden border border-slate-700/40"
+        style={{ width: 120, height: Math.round(120 * (ph / pw)) }}
+        title={`p.${pageNo} · ${textType ?? ''} · x ${pct(x1)}–${pct(x2)} y ${pct(y1)}–${pct(y2)}`}
       >
+        <img src={pageImgSrc} className="absolute inset-0 w-full h-full object-cover" alt="" />
         <div
-          className="absolute border-2 border-violet-400 bg-violet-400/20 rounded-sm"
-          style={{
-            left:   pct(x1),
-            top:    pct(y1),
-            width:  pct(x2 - x1),
-            height: pct(y2 - y1),
-          }}
+          className="absolute border-2 border-violet-400 bg-violet-400/25 rounded-sm"
+          style={{ left: pct(x1), top: pct(y1), width: pct(x2 - x1), height: pct(y2 - y1) }}
         />
       </div>
-      {/* Human-readable coordinates */}
-      <p className="text-xs text-slate-500 font-mono">
-        {textType && <span className="capitalize mr-1">{textType} · </span>}
-        x {pct(x1)}–{pct(x2)} · y {pct(y1)}–{pct(y2)}
-      </p>
     </div>
   );
 }
@@ -83,6 +92,7 @@ function CitationCard({ source }: { source: SourceReference }) {
   const ct = source.content_type ?? 'text';
   const meta = CONTENT_TYPE_META[ct] ?? CONTENT_TYPE_META.text;
   const Icon = ct === 'structured' ? Table2 : ct === 'image' ? Image : FileText;
+  const hasBbox = source.text_location?.length === 4 && source.page != null;
 
   return (
     <div className="p-3 bg-slate-800/30 rounded-xl border border-slate-700/30">
@@ -111,12 +121,23 @@ function CitationCard({ source }: { source: SourceReference }) {
         </span>
       </div>
 
-      {/* Chunk text preview */}
-      <p className="text-sm text-slate-400 line-clamp-3">{source.chunk_text}</p>
+      {/* For image chunks: render the actual extracted image */}
+      {ct === 'image' && source.image_data ? (
+        <img
+          src={`data:image/jpeg;base64,${source.image_data}`}
+          alt={source.chunk_text}
+          className="rounded max-w-full max-h-48 object-contain mb-2"
+        />
+      ) : (
+        /* Chunk text preview for text / table chunks */
+        <p className="text-sm text-slate-400 line-clamp-3">{source.chunk_text}</p>
+      )}
 
-      {/* Bounding box indicator (rich processor only) */}
-      {source.text_location && source.text_location.length === 4 && (
+      {/* Bounding box thumbnail (text / table chunks with bbox from rich processor) */}
+      {ct !== 'image' && hasBbox && (
         <BboxIndicator
+          documentId={source.document_id}
+          pageNo={source.page!}
           loc={source.text_location as [number, number, number, number]}
           pageWidth={source.page_width}
           pageHeight={source.page_height}
