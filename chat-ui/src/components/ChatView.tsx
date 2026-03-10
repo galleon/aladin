@@ -69,7 +69,7 @@ function CitationCard({ source }: { source: SourceReference }) {
         <div className="p-2 bg-white/5 rounded-lg border border-white/10 space-y-1">
             <div className="flex items-center gap-1.5 flex-wrap">
                 <Icon className="w-3 h-3 text-indigo-400 shrink-0" />
-                <span className="text-xs text-indigo-300 truncate max-w-[160px]">{source.filename}</span>
+                <span className="text-xs text-indigo-300 truncate max-w-[160px]" title={source.filename}>{source.filename}</span>
                 {ct !== 'text' && (
                     <span className={`text-xs px-1 py-0.5 rounded border font-medium ${meta.color}`}>
                         {meta.label}

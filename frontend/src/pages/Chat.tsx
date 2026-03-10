@@ -89,7 +89,7 @@ function CitationCard({ source }: { source: SourceReference }) {
       {/* Header row */}
       <div className="flex items-center gap-2 mb-2 flex-wrap">
         <Icon className="w-4 h-4 text-violet-400 shrink-0" />
-        <span className="text-sm font-medium text-slate-300 truncate max-w-[180px]">
+        <span className="text-sm font-medium text-slate-300 truncate max-w-[180px]" title={source.filename}>
           {source.filename}
         </span>
 
