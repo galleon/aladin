@@ -75,6 +75,7 @@ class RichChunk:
         "table_content",  # raw table markdown (structured only)
         "table_format",   # "markdown" (structured only)
         "image_caption",  # VLM caption (image only)
+        "image_data",     # base64 JPEG of the image (image only) — rendered directly in the UI
         "metadata",       # extra flat metadata (source_type, file_type, pdf meta, …)
     )
 
@@ -100,6 +101,7 @@ class RichFileProcessor:
         job_id: str,
         collection_name: str,
         processing_config: dict = None,
+        document_id: int | None = None,
     ):
         self.job_ctx = job_ctx
         self.job_id = job_id
@@ -121,6 +123,7 @@ class RichFileProcessor:
             api_key=settings.QDRANT_API_KEY,
         )
 
+        self.document_id = document_id
         self.processing_config = processing_config or {}
         self.embedding_model_id = (
             self.processing_config.get("embedding_model_id") or settings.EMBEDDING_MODEL
@@ -287,6 +290,7 @@ class RichFileProcessor:
         with no provenance data, so it cannot produce bounding boxes, separate
         table chunks, or image chunks.  Rich mode always runs in-process Docling.
         """
+        # Text + table extraction — fatal if it fails (no useful output)
         try:
             loop = asyncio.get_event_loop()
             rich_chunks = await loop.run_in_executor(
@@ -294,20 +298,6 @@ class RichFileProcessor:
                 self._run_rich_extraction,
                 file_path, original_filename,
             )
-            # For PDFs, append VLM-captioned image chunks
-            if file_ext == ".pdf":
-                image_chunks = await self._extract_pdf_images(
-                    file_path, original_filename,
-                )
-                rich_chunks.extend(image_chunks)
-
-            # Recompute chunk_index / total_chunks across the full combined list
-            total = len(rich_chunks)
-            for i, c in enumerate(rich_chunks):
-                c.chunk_index = i
-                c.total_chunks = total
-
-            return rich_chunks
         except Exception as e:
             logger.error("Rich extraction failed: %s", e)
             if file_ext == ".pdf":
@@ -319,6 +309,26 @@ class RichFileProcessor:
                     )
                     return [self._plain_to_rich(c) for c in plain]
             raise
+
+        # Image extraction is non-fatal — text+table chunks are preserved regardless
+        if file_ext == ".pdf":
+            try:
+                image_chunks = await self._extract_pdf_images(
+                    file_path, original_filename,
+                )
+                rich_chunks.extend(image_chunks)
+            except Exception as e:
+                logger.warning(
+                    "Image extraction failed (non-fatal), text+table chunks preserved: %s", e,
+                )
+
+        # Recompute chunk_index / total_chunks across the full combined list
+        total = len(rich_chunks)
+        for i, c in enumerate(rich_chunks):
+            c.chunk_index = i
+            c.total_chunks = total
+
+        return rich_chunks
 
     def _run_rich_extraction(
         self, file_path: str, original_filename: str,
@@ -506,6 +516,9 @@ class RichFileProcessor:
             logger.warning("pypdfium2 failed to open %s: %s", original_filename, e)
             return []
 
+        # Use the FPDF_PAGEOBJ_IMAGE constant from pdfium.raw (works across all v4.x releases)
+        IMAGE_OBJ_TYPE = pdfium.raw.FPDF_PAGEOBJ_IMAGE
+
         # Collect (image, bbox, page_no, page_w, page_h) tuples first, then caption in parallel
         candidates = []
         for page_idx in range(len(pdf)):
@@ -513,9 +526,8 @@ class RichFileProcessor:
             page_width = page.get_width()
             page_height = page.get_height()
 
-            for obj in page.get_objects():
-                if obj.type != pdfium.PdfObjectType.IMAGE:
-                    continue
+            # filter= accepts a list of FPDF_PAGEOBJ_* int constants — yields PdfImage directly
+            for obj in page.get_objects(filter=[IMAGE_OBJ_TYPE]):
                 try:
                     bitmap = obj.get_bitmap(render=True)
                     pil_image = bitmap.to_pil()
@@ -550,7 +562,7 @@ class RichFileProcessor:
 
         async def caption_with_sem(pil_image, bbox, page_no, pw, ph):
             async with semaphore:
-                caption = await self._caption_image(pil_image, original_filename)
+                caption, image_data = await self._caption_image(pil_image, original_filename)
             if not caption:
                 return None
             return RichChunk(
@@ -566,6 +578,7 @@ class RichFileProcessor:
                 text_type="picture",
                 text_location=bbox,
                 image_caption=caption,
+                image_data=image_data,
                 metadata={**doc_meta},
             )
 
@@ -585,14 +598,15 @@ class RichFileProcessor:
         scale = max_side / max(w, h)
         return pil_image.resize((int(w * scale), int(h * scale)))
 
-    async def _caption_image(self, pil_image, filename: str) -> str:
-        """Resize image, encode as JPEG, send to VLM, return caption text."""
+    async def _caption_image(self, pil_image, filename: str) -> tuple[str, str]:
+        """Resize image, encode as JPEG, send to VLM. Returns (caption, base64_jpeg)."""
         try:
             pil_image = self._resize_for_vlm(pil_image)
             buf = io.BytesIO()
             # JPEG is significantly smaller than PNG for photographs/diagrams
             pil_image.convert("RGB").save(buf, format="JPEG", quality=85)
-            b64 = base64.b64encode(buf.getvalue()).decode()
+            image_bytes = buf.getvalue()
+            b64 = base64.b64encode(image_bytes).decode()
 
             response = self.vlm_client.chat.completions.create(
                 model=self.vlm_model,
@@ -618,10 +632,11 @@ class RichFileProcessor:
                 max_tokens=512,
                 temperature=0.0,
             )
-            return response.choices[0].message.content.strip()
+            caption = response.choices[0].message.content.strip()
+            return caption, b64
         except Exception as e:
             logger.warning("VLM captioning failed (%s): %s", filename, e)
-            return ""
+            return "", ""
 
     # ------------------------------------------------------------------
     # Helpers
@@ -649,9 +664,20 @@ class RichFileProcessor:
     def _prov_info(
         self, item, page_dims: dict
     ) -> tuple[Optional[int], Optional[list], Optional[float], Optional[float]]:
-        """Extract page_no, bbox [l,t,r,b], page_width, page_height from a Docling item."""
+        """Extract page_no, bbox [l,t,r,b], page_width, page_height from a Docling item.
+
+        Handles two layouts:
+        - DocItem / TableItem: prov lives directly on the item (item.prov)
+        - DocChunk (HierarchicalChunker): prov lives at item.meta.doc_items[0].prov
+        """
         prov = getattr(item, "prov", None)
-        if not prov or not len(prov):
+        if not prov:
+            # DocChunk path: prov is nested inside meta.doc_items
+            meta = getattr(item, "meta", None)
+            doc_items = getattr(meta, "doc_items", None) if meta is not None else None
+            if doc_items:
+                prov = getattr(doc_items[0], "prov", None)
+        if not prov:
             return None, None, None, None
 
         p = prov[0]
@@ -765,11 +791,21 @@ class RichFileProcessor:
             logger.info(
                 "Rich processor: stored %d chunks in %s", len(points), self.collection_name,
             )
+            for chunk in batch:
+                logger.debug(
+                    "  chunk %d: content_type=%s text_type=%s page=%s text_location=%s",
+                    chunk.chunk_index,
+                    chunk.content_type,
+                    chunk.text_type,
+                    chunk.page_number,
+                    chunk.text_location,
+                )
 
     def _build_payload(self, chunk: RichChunk) -> dict:
         """Build Qdrant payload with NeMo-style enriched metadata."""
         payload: dict = {
             # Core fields — backward compatible with existing RAG retrieval
+            "document_id": self.document_id,
             "content": chunk.content,
             "source_file": chunk.source_file,
             "chunk_index": chunk.chunk_index,
@@ -795,6 +831,9 @@ class RichFileProcessor:
         # Image extras
         if chunk.content_type == CONTENT_TYPE_IMAGE:
             payload["image_caption"] = chunk.image_caption
+            # Base64 JPEG stored inline so the frontend can render without a separate request
+            if chunk.image_data:
+                payload["image_data"] = chunk.image_data
 
         # Pass through any extra metadata (pdf author, title, dates, …)
         for k, v in (chunk.metadata or {}).items():

@@ -21,7 +21,6 @@ from shared.schemas import IngestionJobStatus
 from shared.telemetry import setup_telemetry, get_tracer, IngestionMetrics
 
 from .web import WebProcessor
-from .file import FileProcessor
 from .file.rich_processor import RichFileProcessor
 from .video_processor import VideoProcessor
 
@@ -193,24 +192,13 @@ async def process_file_job(
                         db.commit()
                         logger.info(f"Updated document {document_id} status to processing")
 
-            # Select processor: env default or per-job override via processing_config
-            processor_type = (processing_config or {}).get(
-                "file_processor", settings.FILE_PROCESSOR
+            processor = RichFileProcessor(
+                job_ctx=job_ctx,
+                job_id=job_id,
+                collection_name=collection_name,
+                processing_config=processing_config or {},
+                document_id=document_id,
             )
-            if processor_type == "rich":
-                processor = RichFileProcessor(
-                    job_ctx=job_ctx,
-                    job_id=job_id,
-                    collection_name=collection_name,
-                    processing_config=processing_config or {},
-                )
-            else:
-                processor = FileProcessor(
-                    job_ctx=job_ctx,
-                    job_id=job_id,
-                    collection_name=collection_name,
-                    processing_config=processing_config or {},
-                )
 
             # Process the file
             result = await processor.process(
