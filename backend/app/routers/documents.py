@@ -1,5 +1,6 @@
 """Document-level API endpoints (not tied to a specific data domain)."""
 
+import asyncio
 import io
 import os
 
@@ -63,38 +64,40 @@ async def get_document_page_image(
             detail="PDF page rendering is not available on this server (pypdfium2 not installed)",
         )
 
-    try:
-        pdf = pdfium.PdfDocument(file_path)
-    except Exception as e:
-        logger.error("Failed to open PDF", document_id=document_id, error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to open PDF document")
+    def _render_page() -> bytes:
+        """CPU-bound: open PDF, render page, encode as JPEG. Runs in a thread pool."""
+        try:
+            pdf = pdfium.PdfDocument(file_path)
+        except Exception as e:
+            raise RuntimeError(f"Failed to open PDF: {e}") from e
+
+        try:
+            n_pages = len(pdf)
+            if page_no < 1 or page_no > n_pages:
+                raise ValueError(
+                    f"Page {page_no} does not exist (document has {n_pages} pages)"
+                )
+            page = pdf[page_no - 1]  # pypdfium2 is 0-indexed
+            bitmap = page.render(scale=scale, rotation=0)
+            pil_image = bitmap.to_pil()
+            buf = io.BytesIO()
+            pil_image.convert("RGB").save(buf, format="JPEG", quality=85)
+            return buf.getvalue()
+        finally:
+            pdf.close()
 
     try:
-        if page_no < 1 or page_no > len(pdf):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Page {page_no} does not exist (document has {len(pdf)} pages)",
-            )
-
-        page = pdf[page_no - 1]  # pypdfium2 is 0-indexed
-        bitmap = page.render(scale=scale, rotation=0)
-        pil_image = bitmap.to_pil()
-
-        buf = io.BytesIO()
-        pil_image.convert("RGB").save(buf, format="JPEG", quality=85)
-        buf.seek(0)
-
-        return Response(
-            content=buf.read(),
-            media_type="image/jpeg",
-            headers={"Cache-Control": "private, max-age=3600"},
-        )
-    except HTTPException:
-        raise
+        jpeg_bytes = await asyncio.to_thread(_render_page)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(
             "Page render failed", document_id=document_id, page_no=page_no, error=str(e)
         )
         raise HTTPException(status_code=500, detail="Failed to render page image")
-    finally:
-        pdf.close()
+
+    return Response(
+        content=jpeg_bytes,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
