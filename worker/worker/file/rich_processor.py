@@ -281,17 +281,12 @@ class RichFileProcessor:
     async def _process_rich(
         self, file_path: str, original_filename: str, file_ext: str,
     ) -> List[RichChunk]:
-        """Extract text chunks + table chunks + image chunks."""
-        # Try external Docling first
-        content = await call_external_docling(file_path, original_filename)
-        if content:
-            logger.info("External Docling for %s (no bbox)", original_filename)
-            plain_chunks = create_chunks_from_content(
-                content, original_filename, file_ext, self.job_id,
-                text_splitter=self.text_splitter,
-            )
-            return [self._plain_to_rich(c) for c in plain_chunks]
+        """Extract text chunks + table chunks + image chunks.
 
+        External Docling is intentionally skipped here: it returns plain text
+        with no provenance data, so it cannot produce bounding boxes, separate
+        table chunks, or image chunks.  Rich mode always runs in-process Docling.
+        """
         try:
             loop = asyncio.get_event_loop()
             rich_chunks = await loop.run_in_executor(
@@ -305,6 +300,13 @@ class RichFileProcessor:
                     file_path, original_filename,
                 )
                 rich_chunks.extend(image_chunks)
+
+            # Recompute chunk_index / total_chunks across the full combined list
+            total = len(rich_chunks)
+            for i, c in enumerate(rich_chunks):
+                c.chunk_index = i
+                c.total_chunks = total
+
             return rich_chunks
         except Exception as e:
             logger.error("Rich extraction failed: %s", e)
@@ -504,6 +506,8 @@ class RichFileProcessor:
             logger.warning("pypdfium2 failed to open %s: %s", original_filename, e)
             return []
 
+        # Collect (image, bbox, page_no, page_w, page_h) tuples first, then caption in parallel
+        candidates = []
         for page_idx in range(len(pdf)):
             page = pdf[page_idx]
             page_width = page.get_width()
@@ -523,7 +527,6 @@ class RichFileProcessor:
                 if pil_image.width < 50 or pil_image.height < 50:
                     continue
 
-                # Get image bbox on page
                 try:
                     bbox_obj = obj.get_pos()
                     bbox = [
@@ -535,47 +538,71 @@ class RichFileProcessor:
                 except Exception:
                     bbox = None
 
-                caption = await self._caption_image(pil_image, original_filename)
-                if not caption:
-                    continue
-
-                chunks.append(RichChunk(
-                    id=f"{self.job_id}_{uuid.uuid4().hex[:8]}",
-                    content=caption,
-                    source_file=original_filename,
-                    chunk_index=0,   # fixed after combining
-                    total_chunks=0,
-                    page_number=page_idx + 1,
-                    page_width=page_width,
-                    page_height=page_height,
-                    content_type=CONTENT_TYPE_IMAGE,
-                    text_type="picture",
-                    text_location=bbox,
-                    image_caption=caption,
-                    metadata={**doc_meta},
-                ))
+                candidates.append((pil_image, bbox, page_idx + 1, page_width, page_height))
 
         pdf.close()
+
+        if not candidates:
+            return []
+
+        # Caption all images concurrently with bounded parallelism (max 4 in-flight)
+        semaphore = asyncio.Semaphore(4)
+
+        async def caption_with_sem(pil_image, bbox, page_no, pw, ph):
+            async with semaphore:
+                caption = await self._caption_image(pil_image, original_filename)
+            if not caption:
+                return None
+            return RichChunk(
+                id=f"{self.job_id}_{uuid.uuid4().hex[:8]}",
+                content=caption,
+                source_file=original_filename,
+                chunk_index=0,    # recomputed by caller
+                total_chunks=0,
+                page_number=page_no,
+                page_width=pw,
+                page_height=ph,
+                content_type=CONTENT_TYPE_IMAGE,
+                text_type="picture",
+                text_location=bbox,
+                image_caption=caption,
+                metadata={**doc_meta},
+            )
+
+        results = await asyncio.gather(
+            *[caption_with_sem(img, bbox, pno, pw, ph) for img, bbox, pno, pw, ph in candidates]
+        )
+        chunks = [r for r in results if r is not None]
         logger.info("Extracted %d image chunks from %s", len(chunks), original_filename)
         return chunks
 
+    def _resize_for_vlm(self, pil_image):
+        """Resize image to fit VLM_INPUT_MAX_SIDE (matches video pipeline behaviour)."""
+        max_side = getattr(settings, "VLM_INPUT_MAX_SIDE", 0) or 640
+        w, h = pil_image.width, pil_image.height
+        if max(w, h) <= max_side:
+            return pil_image
+        scale = max_side / max(w, h)
+        return pil_image.resize((int(w * scale), int(h * scale)))
+
     async def _caption_image(self, pil_image, filename: str) -> str:
-        """Send image to VLM and return caption text."""
+        """Resize image, encode as JPEG, send to VLM, return caption text."""
         try:
+            pil_image = self._resize_for_vlm(pil_image)
             buf = io.BytesIO()
-            pil_image.save(buf, format="PNG")
+            # JPEG is significantly smaller than PNG for photographs/diagrams
+            pil_image.convert("RGB").save(buf, format="JPEG", quality=85)
             b64 = base64.b64encode(buf.getvalue()).decode()
 
-            vlm_model = self.vlm_model
             response = self.vlm_client.chat.completions.create(
-                model=vlm_model,
+                model=self.vlm_model,
                 messages=[
                     {
                         "role": "user",
                         "content": [
                             {
                                 "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{b64}"},
+                                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
                             },
                             {
                                 "type": "text",
@@ -751,6 +778,7 @@ class RichFileProcessor:
             "source_type": "file",
             "file_type": chunk.metadata.get("file_type", ""),
             "page_number": chunk.page_number,
+            "page": chunk.page_number,  # alias for backward-compat with rag_service / legacy chunks
             # NeMo-style enriched fields
             "content_type": chunk.content_type,       # text | structured | image
             "text_type": chunk.text_type or "body",   # header | body | caption | …

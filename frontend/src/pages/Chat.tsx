@@ -43,10 +43,12 @@ function BboxIndicator({
   const ph = pageHeight ?? 842;
 
   // Docling uses bottom-left origin → convert to top-left for CSS
-  const x1 = Math.min(l / pw, 1);
-  const y1 = Math.min(1 - b / ph, 1);   // flip y
-  const x2 = Math.min(r / pw, 1);
-  const y2 = Math.min(1 - t / ph, 1);
+  // Clamp each value to [0,1] and ensure x1<=x2, y1<=y2 to prevent negative CSS sizes
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  const x1 = clamp(Math.min(l, r) / pw);
+  const x2 = clamp(Math.max(l, r) / pw);
+  const y1 = clamp(1 - Math.max(t, b) / ph);  // flip y (bottom-left → top-left)
+  const y2 = clamp(1 - Math.min(t, b) / ph);
 
   const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 

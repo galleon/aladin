@@ -335,11 +335,13 @@ Context:
             for doc in state["retrieved_docs"]:
                 payload = doc.get("payload", {})
                 document_id = payload.get("document_id") or 0
-                page = payload.get("page")
+                page = payload.get("page") or payload.get("page_number")
                 filename = payload.get("filename") or payload.get("source_file", "Unknown")
                 text = payload.get("text") or payload.get("content", "")
+                chunk_id = payload.get("chunk_id") or str(doc.get("id", ""))
 
-                source_key = (document_id, page)
+                # Use chunk_id so multiple citations on the same page are not collapsed
+                source_key = (document_id, page, chunk_id)
                 if source_key not in seen_sources:
                     seen_sources.add(source_key)
                     sources.append(
