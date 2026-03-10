@@ -349,6 +349,11 @@ Context:
                             "page": page,
                             "chunk_text": (text[:200] + "...") if len(text) > 200 else text,
                             "score": doc.get("score", 0.0),
+                            "content_type": payload.get("content_type"),
+                            "text_type": payload.get("text_type"),
+                            "text_location": payload.get("text_location"),
+                            "page_width": payload.get("page_width"),
+                            "page_height": payload.get("page_height"),
                         }
                     )
 

@@ -625,6 +625,11 @@ async def chat(
             page=s.get("page"),
             chunk_text=s.get("chunk_text", ""),
             score=float(s.get("score") or 0.0),
+            content_type=s.get("content_type"),
+            text_type=s.get("text_type"),
+            text_location=s.get("text_location"),
+            page_width=s.get("page_width"),
+            page_height=s.get("page_height"),
         )
         for s in rag_response["sources"]
     ]

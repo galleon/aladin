@@ -153,6 +153,10 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
 
+    # File processor backend: "docling" (default) or "rich" (nv-ingest-style with
+    # bounding boxes, separate table/image chunks, VLM image captioning)
+    FILE_PROCESSOR: str = os.getenv("FILE_PROCESSOR", "docling")
+
     class Config:
         env_file = ".env"
         extra = "ignore"

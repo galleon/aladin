@@ -15,9 +15,117 @@ import {
   User,
   MessageSquare,
   Volume2,
+  Table2,
+  Image,
 } from 'lucide-react';
 import { useVoice } from '../hooks/useVoice';
 import VoiceButton from '../components/VoiceButton';
+
+// ── Citation card ──────────────────────────────────────────────────────────────
+
+const CONTENT_TYPE_META: Record<string, { label: string; color: string }> = {
+  structured: { label: 'Table',  color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
+  image:      { label: 'Image',  color: 'bg-sky-500/20   text-sky-300   border-sky-500/30'   },
+  text:       { label: 'Text',   color: 'bg-violet-500/20 text-violet-300 border-violet-500/30' },
+};
+
+function BboxIndicator({
+  loc, pageWidth, pageHeight, textType,
+}: {
+  loc: [number, number, number, number];
+  pageWidth: number | null;
+  pageHeight: number | null;
+  textType: string | null;
+}) {
+  // Normalise bbox to 0–1 if page dimensions are available, otherwise leave as-is
+  const [l, t, r, b] = loc;
+  const pw = pageWidth  ?? 595;  // A4 default (points)
+  const ph = pageHeight ?? 842;
+
+  // Docling uses bottom-left origin → convert to top-left for CSS
+  const x1 = Math.min(l / pw, 1);
+  const y1 = Math.min(1 - b / ph, 1);   // flip y
+  const x2 = Math.min(r / pw, 1);
+  const y2 = Math.min(1 - t / ph, 1);
+
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+
+  return (
+    <div className="mt-2 space-y-1">
+      {/* Mini page thumbnail with bbox overlay */}
+      <div
+        className="relative w-full bg-slate-900/60 border border-slate-700/40 rounded overflow-hidden"
+        style={{ paddingTop: `${(ph / pw) * 100}%`, maxWidth: 120 }}
+        title={`Location on page: x ${pct(x1)}–${pct(x2)}, y ${pct(y1)}–${pct(y2)}`}
+      >
+        <div
+          className="absolute border-2 border-violet-400 bg-violet-400/20 rounded-sm"
+          style={{
+            left:   pct(x1),
+            top:    pct(y1),
+            width:  pct(x2 - x1),
+            height: pct(y2 - y1),
+          }}
+        />
+      </div>
+      {/* Human-readable coordinates */}
+      <p className="text-xs text-slate-500 font-mono">
+        {textType && <span className="capitalize mr-1">{textType} · </span>}
+        x {pct(x1)}–{pct(x2)} · y {pct(y1)}–{pct(y2)}
+      </p>
+    </div>
+  );
+}
+
+function CitationCard({ source }: { source: SourceReference }) {
+  const ct = source.content_type ?? 'text';
+  const meta = CONTENT_TYPE_META[ct] ?? CONTENT_TYPE_META.text;
+  const Icon = ct === 'structured' ? Table2 : ct === 'image' ? Image : FileText;
+
+  return (
+    <div className="p-3 bg-slate-800/30 rounded-xl border border-slate-700/30">
+      {/* Header row */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <Icon className="w-4 h-4 text-violet-400 shrink-0" />
+        <span className="text-sm font-medium text-slate-300 truncate max-w-[180px]">
+          {source.filename}
+        </span>
+
+        {/* Content-type badge (only when not plain text) */}
+        {ct !== 'text' && (
+          <span className={`text-xs px-1.5 py-0.5 rounded border font-medium ${meta.color}`}>
+            {meta.label}
+          </span>
+        )}
+
+        {/* Page */}
+        {source.page != null && (
+          <span className="text-xs text-slate-500">p.{source.page}</span>
+        )}
+
+        {/* Score */}
+        <span className="text-xs text-slate-500 ml-auto shrink-0">
+          {(source.score * 100).toFixed(1)}%
+        </span>
+      </div>
+
+      {/* Chunk text preview */}
+      <p className="text-sm text-slate-400 line-clamp-3">{source.chunk_text}</p>
+
+      {/* Bounding box indicator (rich processor only) */}
+      {source.text_location && source.text_location.length === 4 && (
+        <BboxIndicator
+          loc={source.text_location as [number, number, number, number]}
+          pageWidth={source.page_width}
+          pageHeight={source.page_height}
+          textType={source.text_type}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function Chat() {
   const { agentId, conversationId } = useParams<{ agentId: string; conversationId?: string }>();
@@ -198,24 +306,7 @@ export default function Chat() {
                   {expandedSources.has(msg.id) && (
                     <div className="mt-2 space-y-2">
                       {msg.sources.map((source: SourceReference, idx: number) => (
-                        <div
-                          key={idx}
-                          className="p-3 bg-slate-800/30 rounded-xl border border-slate-700/30"
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            <FileText className="w-4 h-4 text-violet-400" />
-                            <span className="text-sm font-medium text-slate-300">
-                              {source.filename}
-                            </span>
-                            {source.page && (
-                              <span className="text-xs text-slate-500">Page {source.page}</span>
-                            )}
-                            <span className="text-xs text-slate-500 ml-auto">
-                              Score: {(source.score * 100).toFixed(1)}%
-                            </span>
-                          </div>
-                          <p className="text-sm text-slate-400 line-clamp-3">{source.chunk_text}</p>
-                        </div>
+                        <CitationCard key={idx} source={source} />
                       ))}
                     </div>
                   )}

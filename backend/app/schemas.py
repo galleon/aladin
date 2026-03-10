@@ -504,6 +504,12 @@ class SourceReference(BaseModel):
     page: int | None = None
     chunk_text: str
     score: float
+    # NeMo-style enriched fields (populated by the rich processor)
+    content_type: str | None = None      # text | structured | image
+    text_type: str | None = None         # header | body | caption | table | picture | …
+    text_location: list[float] | None = None  # [l, t, r, b] in page points
+    page_width: float | None = None      # for bbox normalisation in UI
+    page_height: float | None = None
 
 
 class TranslationMetadata(BaseModel):

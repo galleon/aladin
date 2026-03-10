@@ -2,6 +2,7 @@
 File ingestion: document extraction, chunking, embedding, Qdrant storage.
 """
 from .processor import FileProcessor
+from .rich_processor import RichFileProcessor
 from .loader import (
     load_text_file,
     load_json_file,
@@ -13,6 +14,7 @@ from .chunker import create_chunks_from_content
 
 __all__ = [
     "FileProcessor",
+    "RichFileProcessor",
     "load_text_file",
     "load_json_file",
     "call_external_docling",
