@@ -204,7 +204,6 @@ async def process_file_job(
             result = await processor.process(
                 file_path=file_path,
                 original_filename=original_filename,
-                processing_config=processing_config or {},
             )
 
             # Update document status to ready (data domain flow)

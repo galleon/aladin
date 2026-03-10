@@ -100,12 +100,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 ## File Processors
 
-Two file processors are available, controlled by the `FILE_PROCESSOR` environment variable (or per-job via `processing_config.file_processor`):
-
-| Value | Description |
-|-------|-------------|
-| `docling` | Default. Docling text extraction → flat chunks. No bbox, no image captions. |
-| `rich` | NeMo-Retriever-style pipeline. Extracts text, tables, and images as separate chunk types with bounding boxes. |
+The ingestion worker always uses `RichFileProcessor` — the NeMo-Retriever-style pipeline that produces separate text, table, and image chunk types with bounding boxes and VLM image captions.
 
 ### Rich Processor — Qdrant Point Metadata
 

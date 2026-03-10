@@ -201,7 +201,6 @@ class RichFileProcessor:
         self,
         file_path: str,
         original_filename: str,
-        processing_config: dict,
     ) -> dict:
         with self.tracer.start_as_current_span("rich_file_process") as span:
             span.set_attribute("filename", original_filename)
@@ -608,31 +607,38 @@ class RichFileProcessor:
             image_bytes = buf.getvalue()
             b64 = base64.b64encode(image_bytes).decode()
 
-            response = self.vlm_client.chat.completions.create(
-                model=self.vlm_model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-                            },
-                            {
-                                "type": "text",
-                                "text": (
-                                    "Describe this image concisely for a search index. "
-                                    "Include: what is shown, any text visible, charts or tables present, "
-                                    "and any key data points. Be factual and specific."
-                                ),
-                            },
-                        ],
-                    }
-                ],
-                max_tokens=512,
-                temperature=0.0,
-            )
-            caption = response.choices[0].message.content.strip()
+            vlm_client = self.vlm_client
+            vlm_model = self.vlm_model
+            b64_captured = b64
+
+            def _do_vlm_request() -> str:
+                resp = vlm_client.chat.completions.create(
+                    model=vlm_model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/jpeg;base64,{b64_captured}"},
+                                },
+                                {
+                                    "type": "text",
+                                    "text": (
+                                        "Describe this image concisely for a search index. "
+                                        "Include: what is shown, any text visible, charts or tables present, "
+                                        "and any key data points. Be factual and specific."
+                                    ),
+                                },
+                            ],
+                        }
+                    ],
+                    max_tokens=512,
+                    temperature=0.0,
+                )
+                return resp.choices[0].message.content.strip()
+
+            caption = await asyncio.to_thread(_do_vlm_request)
             return caption, b64
         except Exception as e:
             logger.warning("VLM captioning failed (%s): %s", filename, e)

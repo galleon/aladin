@@ -41,12 +41,17 @@ function BboxIndicator({ documentId, pageNo, loc, pageWidth, pageHeight, textTyp
     const [pageImgSrc, setPageImgSrc] = useState<string | null>(null)
 
     useEffect(() => {
+        let objectUrl: string | null = null
         fetch(`/api/documents/${documentId}/pages/${pageNo}`, {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
             .then((r) => (r.ok ? r.blob() : Promise.reject(r.status)))
-            .then((blob) => setPageImgSrc(URL.createObjectURL(blob)))
+            .then((blob) => {
+                objectUrl = URL.createObjectURL(blob)
+                setPageImgSrc(objectUrl)
+            })
             .catch(() => { /* silently skip — no thumbnail available */ })
+        return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
     }, [documentId, pageNo])
 
     const [l, t, r, b] = loc

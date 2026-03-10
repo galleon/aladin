@@ -3,7 +3,7 @@
 import io
 import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 async def get_document_page_image(
     document_id: int,
     page_no: int,
-    scale: float = 1.5,
+    scale: float = Query(default=1.5, ge=0.5, le=3.0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -50,13 +50,17 @@ async def get_document_page_image(
     if document.file_type != "pdf":
         raise HTTPException(status_code=400, detail="Page images are only available for PDF documents")
 
-    file_path = os.path.join(settings.UPLOAD_DIR, document.filename)
+    file_path = document.filename  # stored as absolute path by the upload handler
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Document file not found on disk")
 
     try:
         import pypdfium2 as pdfium
+    except ImportError:
+        logger.warning("pypdfium2 not installed; page thumbnail unavailable", document_id=document_id)
+        raise HTTPException(status_code=501, detail="PDF page rendering is not available on this server (pypdfium2 not installed)")
 
+    try:
         pdf = pdfium.PdfDocument(file_path)
         if page_no < 1 or page_no > len(pdf):
             pdf.close()
