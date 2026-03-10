@@ -30,12 +30,14 @@ export interface SourceReference {
     filename: string
     page?: number
     score?: number
+    document_id?: number
     // Rich processor fields (NeMo-style enriched metadata)
     content_type?: 'text' | 'structured' | 'image' | null
     text_type?: string | null       // header | body | caption | table | picture | …
     text_location?: [number, number, number, number] | null  // [l, t, r, b] page points
     page_width?: number | null
     page_height?: number | null
+    image_data?: string | null      // base64 JPEG for image chunks — rendered directly in UI
 }
 
 export interface Message {

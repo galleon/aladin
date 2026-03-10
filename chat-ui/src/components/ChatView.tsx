@@ -24,12 +24,31 @@ const CONTENT_TYPE_META: Record<string, { label: string; color: string }> = {
     text:       { label: 'Text',  color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
 }
 
-function BboxIndicator({ loc, pageWidth, pageHeight, textType }: {
+/**
+ * Fetches a JPEG rendering of the PDF page from the backend and overlays
+ * a coloured rectangle showing the exact chunk location on the page.
+ * Renders nothing while the image is loading or if the fetch fails.
+ */
+function BboxIndicator({ documentId, pageNo, loc, pageWidth, pageHeight, textType }: {
+    documentId: number
+    pageNo: number
     loc: [number, number, number, number]
     pageWidth?: number | null
     pageHeight?: number | null
     textType?: string | null
 }) {
+    const token = useStore((s) => s.token)
+    const [pageImgSrc, setPageImgSrc] = useState<string | null>(null)
+
+    useEffect(() => {
+        fetch(`/api/documents/${documentId}/pages/${pageNo}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+            .then((r) => (r.ok ? r.blob() : Promise.reject(r.status)))
+            .then((blob) => setPageImgSrc(URL.createObjectURL(blob)))
+            .catch(() => { /* silently skip — no thumbnail available */ })
+    }, [documentId, pageNo])
+
     const [l, t, r, b] = loc
     const pw = pageWidth  ?? 595
     const ph = pageHeight ?? 842
@@ -40,22 +59,21 @@ function BboxIndicator({ loc, pageWidth, pageHeight, textType }: {
     const y2 = clamp(1 - Math.min(t, b) / ph)
     const pct = (v: number) => `${(v * 100).toFixed(1)}%`
 
+    if (!pageImgSrc) return null
+
     return (
-        <div className="mt-2 space-y-1">
+        <div className="mt-1">
             <div
-                className="relative w-full bg-black/40 border border-white/10 rounded overflow-hidden"
-                style={{ paddingTop: `${(ph / pw) * 100}%`, maxWidth: 100 }}
-                title={`Location: x ${pct(x1)}–${pct(x2)}, y ${pct(y1)}–${pct(y2)}`}
+                className="relative rounded overflow-hidden border border-white/10"
+                style={{ width: 100, height: Math.round(100 * (ph / pw)) }}
+                title={`p.${pageNo} · ${textType ?? ''} · x ${pct(x1)}–${pct(x2)} y ${pct(y1)}–${pct(y2)}`}
             >
+                <img src={pageImgSrc} className="absolute inset-0 w-full h-full object-cover" alt="" />
                 <div
-                    className="absolute border-2 border-indigo-400 bg-indigo-400/20 rounded-sm"
+                    className="absolute border-2 border-indigo-400 bg-indigo-400/25 rounded-sm"
                     style={{ left: pct(x1), top: pct(y1), width: pct(x2 - x1), height: pct(y2 - y1) }}
                 />
             </div>
-            <p className="text-xs text-gray-500 font-mono">
-                {textType && <span className="capitalize mr-1">{textType} · </span>}
-                x {pct(x1)}–{pct(x2)} · y {pct(y1)}–{pct(y2)}
-            </p>
         </div>
     )
 }
@@ -64,6 +82,7 @@ function CitationCard({ source }: { source: SourceReference }) {
     const ct = source.content_type ?? 'text'
     const meta = CONTENT_TYPE_META[ct] ?? CONTENT_TYPE_META.text
     const Icon = ct === 'structured' ? Table2 : ct === 'image' ? Image : FileText
+    const hasBbox = source.text_location?.length === 4 && source.page != null && source.document_id != null
 
     return (
         <div className="p-2 bg-white/5 rounded-lg border border-white/10 space-y-1">
@@ -80,8 +99,21 @@ function CitationCard({ source }: { source: SourceReference }) {
                     <span className="text-xs text-gray-500 ml-auto">{(source.score * 100).toFixed(0)}%</span>
                 )}
             </div>
-            {source.text_location && source.text_location.length === 4 && (
+
+            {/* Image chunks: render the actual extracted image */}
+            {ct === 'image' && source.image_data ? (
+                <img
+                    src={`data:image/jpeg;base64,${source.image_data}`}
+                    alt={source.filename}
+                    className="rounded max-w-full max-h-40 object-contain"
+                />
+            ) : null}
+
+            {/* Text / table chunks: page thumbnail with bbox overlay */}
+            {ct !== 'image' && hasBbox && (
                 <BboxIndicator
+                    documentId={source.document_id!}
+                    pageNo={source.page!}
                     loc={source.text_location as [number, number, number, number]}
                     pageWidth={source.page_width}
                     pageHeight={source.page_height}
