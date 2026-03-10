@@ -630,6 +630,7 @@ async def chat(
             text_location=s.get("text_location"),
             page_width=s.get("page_width"),
             page_height=s.get("page_height"),
+            image_data=s.get("image_data"),
         )
         for s in rag_response["sources"]
     ]

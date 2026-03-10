@@ -10,6 +10,7 @@ from .database import engine, Base
 from .routers import (
     auth,
     data_domains,
+    documents,
     agents,
     conversations,
     models,
@@ -78,6 +79,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router, prefix="/api")
 app.include_router(data_domains.router, prefix="/api")
+app.include_router(documents.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
 app.include_router(conversations.router, prefix="/api")
 app.include_router(models.router, prefix="/api")

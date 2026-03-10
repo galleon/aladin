@@ -203,7 +203,7 @@ class RAGAgentCreate(BaseModel):
     agent_type: AgentType = AgentType.RAG
     llm_model: str = Field(..., description="LLM model ID from available models")
     system_prompt: str = Field(..., min_length=1)
-    temperature: float = Field(0.7, ge=0.0, le=2.0)
+    temperature: float = Field(0.2, ge=0.0, le=2.0)
     top_p: float = Field(1.0, ge=0.0, le=1.0)
     top_k: int = Field(50, ge=1, le=100)
     max_tokens: int = Field(2048, ge=1, le=16384)
@@ -510,6 +510,7 @@ class SourceReference(BaseModel):
     text_location: list[float] | None = None  # [l, t, r, b] in page points
     page_width: float | None = None      # for bbox normalisation in UI
     page_height: float | None = None
+    image_data: str | None = None        # base64 JPEG (image chunks only)
 
 
 class TranslationMetadata(BaseModel):

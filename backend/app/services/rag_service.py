@@ -309,9 +309,6 @@ class RAGService:
                     reasoning_info = f"\n\nReasoning Path (entity connections): {' -> '.join(entities)}"
 
             system_message = f"""{agent.system_prompt}
-
-Use the following context to answer the user's question. If the context doesn't contain relevant information, say so.
-Always cite your sources by mentioning the document name and page number when providing information.
 {reasoning_info}
 
 Context:
@@ -356,6 +353,7 @@ Context:
                             "text_location": payload.get("text_location"),
                             "page_width": payload.get("page_width"),
                             "page_height": payload.get("page_height"),
+                            "image_data": payload.get("image_data"),
                         }
                     )
 
