@@ -2,19 +2,134 @@ import { useState, useRef, useEffect } from 'react'
 import {
     Bot, Send, LogOut, MessageSquare, Plus, ChevronDown,
     ThumbsUp, ThumbsDown, FileText, Upload, X, Loader2,
-    Sparkles, AlertCircle, ChevronRight
+    Sparkles, AlertCircle, ChevronRight, Table2, Image
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeSanitize from 'rehype-sanitize'
-import { useStore } from '../store'
+import { useStore, SourceReference } from '../store'
 import {
     getConversations, getConversation, createConversation,
     chat, submitFeedback, uploadDocument
 } from '../api'
 import TranslationView from './TranslationView'
 import VideoTranscriptionView from './VideoTranscriptionView'
+
+// ── Citation card ──────────────────────────────────────────────────────────────
+
+const CONTENT_TYPE_META: Record<string, { label: string; color: string }> = {
+    structured: { label: 'Table', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
+    image:      { label: 'Image', color: 'bg-sky-500/20   text-sky-300   border-sky-500/30'   },
+    text:       { label: 'Text',  color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
+}
+
+/**
+ * Fetches a JPEG rendering of the PDF page from the backend and overlays
+ * a coloured rectangle showing the exact chunk location on the page.
+ * Renders nothing while the image is loading or if the fetch fails.
+ */
+function BboxIndicator({ documentId, pageNo, loc, pageWidth, pageHeight, textType }: {
+    documentId: number
+    pageNo: number
+    loc: [number, number, number, number]
+    pageWidth?: number | null
+    pageHeight?: number | null
+    textType?: string | null
+}) {
+    const token = useStore((s) => s.token)
+    const [pageImgSrc, setPageImgSrc] = useState<string | null>(null)
+
+    useEffect(() => {
+        let objectUrl: string | null = null
+        fetch(`/api/documents/${documentId}/pages/${pageNo}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+            .then((r) => (r.ok ? r.blob() : Promise.reject(r.status)))
+            .then((blob) => {
+                objectUrl = URL.createObjectURL(blob)
+                setPageImgSrc(objectUrl)
+            })
+            .catch(() => { /* silently skip — no thumbnail available */ })
+        return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
+    }, [documentId, pageNo])
+
+    const [l, t, r, b] = loc
+    const pw = pageWidth  ?? 595
+    const ph = pageHeight ?? 842
+    const clamp = (v: number) => Math.max(0, Math.min(1, v))
+    const x1 = clamp(Math.min(l, r) / pw)
+    const x2 = clamp(Math.max(l, r) / pw)
+    const y1 = clamp(1 - Math.max(t, b) / ph)
+    const y2 = clamp(1 - Math.min(t, b) / ph)
+    const pct = (v: number) => `${(v * 100).toFixed(1)}%`
+
+    if (!pageImgSrc) return null
+
+    return (
+        <div className="mt-1">
+            <div
+                className="relative rounded overflow-hidden border border-white/10"
+                style={{ width: 100, height: Math.round(100 * (ph / pw)) }}
+                title={`p.${pageNo} · ${textType ?? ''} · x ${pct(x1)}–${pct(x2)} y ${pct(y1)}–${pct(y2)}`}
+            >
+                <img src={pageImgSrc} className="absolute inset-0 w-full h-full object-cover" alt="" />
+                <div
+                    className="absolute border-2 border-indigo-400 bg-indigo-400/25 rounded-sm"
+                    style={{ left: pct(x1), top: pct(y1), width: pct(x2 - x1), height: pct(y2 - y1) }}
+                />
+            </div>
+        </div>
+    )
+}
+
+function CitationCard({ source }: { source: SourceReference }) {
+    const ct = source.content_type ?? 'text'
+    const meta = CONTENT_TYPE_META[ct] ?? CONTENT_TYPE_META.text
+    const Icon = ct === 'structured' ? Table2 : ct === 'image' ? Image : FileText
+    const hasBbox = source.text_location?.length === 4 && source.page != null && source.document_id != null
+
+    return (
+        <div className="p-2 bg-white/5 rounded-lg border border-white/10 space-y-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+                <Icon className="w-3 h-3 text-indigo-400 shrink-0" />
+                <span className="text-xs text-indigo-300 truncate max-w-[160px]" title={source.filename}>{source.filename}</span>
+                {ct !== 'text' && (
+                    <span className={`text-xs px-1 py-0.5 rounded border font-medium ${meta.color}`}>
+                        {meta.label}
+                    </span>
+                )}
+                {source.page && <span className="text-xs text-gray-500">p.{source.page}</span>}
+                {source.score && (
+                    <span className="text-xs text-gray-500 ml-auto">{(source.score * 100).toFixed(0)}%</span>
+                )}
+            </div>
+
+            {/* Image chunks: render the actual extracted image */}
+            {ct === 'image' && source.image_data ? (
+                <img
+                    src={`data:image/jpeg;base64,${source.image_data}`}
+                    alt={source.filename}
+                    className="rounded max-w-full max-h-40 object-contain"
+                />
+            ) : null}
+
+            {/* Text / table chunks: page thumbnail with bbox overlay */}
+            {ct !== 'image' && hasBbox && (
+                <BboxIndicator
+                    documentId={source.document_id!}
+                    pageNo={source.page!}
+                    loc={source.text_location as [number, number, number, number]}
+                    pageWidth={source.page_width}
+                    pageHeight={source.page_height}
+                    textType={source.text_type}
+                />
+            )}
+        </div>
+    )
+}
+
+// ── Main view ─────────────────────────────────────────────────────────────────
 
 export default function ChatView() {
     const {
@@ -519,53 +634,34 @@ export default function ChatView() {
                                                             {msg.content}
                                                         </ReactMarkdown>
                                                     </div>
-                                                    {msg.sources && msg.sources.length > 0 && (() => {
-                                                        // Deduplicate sources by filename and page (frontend safety check)
-                                                        const uniqueSources = msg.sources.filter((s, index, self) =>
-                                                            index === self.findIndex((other) =>
-                                                                other.filename === s.filename && other.page === s.page
-                                                            )
-                                                        )
-
-                                                        return (
-                                                            <div className="mt-3 pt-3 border-t border-white/10">
-                                                                <button
-                                                                    onClick={() => {
-                                                                        const newExpanded = new Set(expandedSources)
-                                                                        if (newExpanded.has(msg.id || 0)) {
-                                                                            newExpanded.delete(msg.id || 0)
-                                                                        } else {
-                                                                            newExpanded.add(msg.id || 0)
-                                                                        }
-                                                                        setExpandedSources(newExpanded)
-                                                                    }}
-                                                                    className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-300 transition-colors mb-2"
-                                                                >
-                                                                    <ChevronRight
-                                                                        className={`w-3 h-3 transition-transform ${expandedSources.has(msg.id || 0) ? 'rotate-90' : ''
-                                                                            }`}
-                                                                    />
-                                                                    <span>Sources ({uniqueSources.length})</span>
-                                                                </button>
-                                                                {expandedSources.has(msg.id || 0) && (
-                                                                    <div className="space-y-1.5">
-                                                                        {uniqueSources.map((s, i) => (
-                                                                            <div key={i} className="flex items-center gap-2 text-xs text-indigo-300 pl-5">
-                                                                                <FileText className="w-3 h-3 flex-shrink-0" />
-                                                                                <span className="truncate">{s.filename}</span>
-                                                                                {s.page && <span className="text-gray-500 flex-shrink-0">p.{s.page}</span>}
-                                                                                {s.score && (
-                                                                                    <span className="text-gray-500 flex-shrink-0">
-                                                                                        {(s.score * 100).toFixed(0)}%
-                                                                                    </span>
-                                                                                )}
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )
-                                                    })()}
+                                                    {msg.sources && msg.sources.length > 0 && (
+                                                        <div className="mt-3 pt-3 border-t border-white/10">
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newExpanded = new Set(expandedSources)
+                                                                    if (newExpanded.has(msg.id || 0)) {
+                                                                        newExpanded.delete(msg.id || 0)
+                                                                    } else {
+                                                                        newExpanded.add(msg.id || 0)
+                                                                    }
+                                                                    setExpandedSources(newExpanded)
+                                                                }}
+                                                                className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-300 transition-colors mb-2"
+                                                            >
+                                                                <ChevronRight
+                                                                    className={`w-3 h-3 transition-transform ${expandedSources.has(msg.id || 0) ? 'rotate-90' : ''}`}
+                                                                />
+                                                                <span>Sources ({msg.sources.length})</span>
+                                                            </button>
+                                                            {expandedSources.has(msg.id || 0) && (
+                                                                <div className="space-y-1.5 pl-2">
+                                                                    {msg.sources.map((s, i) => (
+                                                                        <CitationCard key={i} source={s} />
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                     {msg.role === 'assistant' && msg.id && (
                                                         <div className="mt-3 pt-3 border-t border-white/10 flex gap-2">
                                                             <button

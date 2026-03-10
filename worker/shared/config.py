@@ -153,6 +153,7 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
 
+
     class Config:
         env_file = ".env"
         extra = "ignore"

@@ -4,13 +4,10 @@ Ingestion Worker - ARQ worker for processing ingestion jobs.
 
 import os
 import sys
-import asyncio
 import logging
 from datetime import datetime
-from typing import Any
 
 import redis.asyncio as redis
-from arq import cron
 from arq.connections import RedisSettings
 
 # Add shared to path
@@ -21,7 +18,7 @@ from shared.schemas import IngestionJobStatus
 from shared.telemetry import setup_telemetry, get_tracer, IngestionMetrics
 
 from .web import WebProcessor
-from .file import FileProcessor
+from .file.rich_processor import RichFileProcessor
 from .video_processor import VideoProcessor
 
 # Configure logging
@@ -190,21 +187,22 @@ async def process_file_job(
                     if doc:
                         doc.status = "processing"
                         db.commit()
-                        logger.info(f"Updated document {document_id} status to processing")
+                        logger.info(
+                            f"Updated document {document_id} status to processing"
+                        )
 
-            # Initialize processor
-            processor = FileProcessor(
+            processor = RichFileProcessor(
                 job_ctx=job_ctx,
                 job_id=job_id,
                 collection_name=collection_name,
                 processing_config=processing_config or {},
+                document_id=document_id,
             )
 
             # Process the file
             result = await processor.process(
                 file_path=file_path,
                 original_filename=original_filename,
-                processing_config=processing_config or {},
             )
 
             # Update document status to ready (data domain flow)
@@ -241,12 +239,18 @@ async def process_file_job(
                 try:
                     Document, _ = get_backend_models()
                     with get_db_session() as db:
-                        doc = db.query(Document).filter(Document.id == document_id).first()
+                        doc = (
+                            db.query(Document)
+                            .filter(Document.id == document_id)
+                            .first()
+                        )
                         if doc:
                             doc.status = "failed"
                             doc.error_message = str(e)
                             db.commit()
-                            logger.info(f"Updated document {document_id} status to failed")
+                            logger.info(
+                                f"Updated document {document_id} status to failed"
+                            )
                 except Exception as db_error:
                     logger.error(f"Failed to update document status: {db_error}")
             raise

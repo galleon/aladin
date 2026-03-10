@@ -163,7 +163,7 @@ class Agent(Base):
     # Nullable for video transcription agents that don't use LLM
     llm_model = Column(String(255), nullable=True)
     system_prompt = Column(Text)  # Optional for some agent types
-    temperature = Column(Float, default=0.7)
+    temperature = Column(Float, default=0.2)
     top_p = Column(Float, default=1.0)
     top_k = Column(Integer, default=50)
     max_tokens = Column(Integer, default=2048)

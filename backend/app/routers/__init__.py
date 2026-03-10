@@ -2,6 +2,7 @@
 from . import (
     auth,
     data_domains,
+    documents,
     agents,
     conversations,
     models,
@@ -15,6 +16,7 @@ from . import (
 __all__ = [
     "auth",
     "data_domains",
+    "documents",
     "agents",
     "conversations",
     "models",

@@ -15,9 +15,145 @@ import {
   User,
   MessageSquare,
   Volume2,
+  Table2,
+  Image,
 } from 'lucide-react';
 import { useVoice } from '../hooks/useVoice';
 import VoiceButton from '../components/VoiceButton';
+
+// ── Citation card ──────────────────────────────────────────────────────────────
+
+const CONTENT_TYPE_META: Record<string, { label: string; color: string }> = {
+  structured: { label: 'Table',  color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
+  image:      { label: 'Image',  color: 'bg-sky-500/20   text-sky-300   border-sky-500/30'   },
+  text:       { label: 'Text',   color: 'bg-violet-500/20 text-violet-300 border-violet-500/30' },
+};
+
+/**
+ * Renders a mini page thumbnail fetched from the backend with a coloured
+ * bbox overlay highlighting the chunk's location on the page.
+ *
+ * The page image is fetched lazily (only when the component mounts) and
+ * cached by the browser via the Cache-Control header set by the API.
+ */
+function BboxIndicator({
+  documentId, pageNo, loc, pageWidth, pageHeight, textType,
+}: {
+  documentId: number;
+  pageNo: number;
+  loc: [number, number, number, number];
+  pageWidth: number | null;
+  pageHeight: number | null;
+  textType: string | null;
+}) {
+  const [pageImgSrc, setPageImgSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    const token = localStorage.getItem('access_token');
+    fetch(`/api/documents/${documentId}/pages/${pageNo}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(r.status)))
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        setPageImgSrc(objectUrl);
+      })
+      .catch(() => { /* silently skip — no thumbnail available */ });
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [documentId, pageNo]);
+
+  const [l, t, r, b] = loc;
+  const pw = pageWidth  ?? 595;  // A4 default (points)
+  const ph = pageHeight ?? 842;
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  const x1 = clamp(Math.min(l, r) / pw);
+  const x2 = clamp(Math.max(l, r) / pw);
+  const y1 = clamp(1 - Math.max(t, b) / ph);  // flip y: Docling bottom-left → CSS top-left
+  const y2 = clamp(1 - Math.min(t, b) / ph);
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+
+  // Don't render the placeholder rectangle until we know whether a page image exists
+  if (!pageImgSrc) return null;
+
+  return (
+    <div className="mt-2 space-y-1">
+      <div
+        className="relative rounded overflow-hidden border border-slate-700/40"
+        style={{ width: 120, height: Math.round(120 * (ph / pw)) }}
+        title={`p.${pageNo} · ${textType ?? ''} · x ${pct(x1)}–${pct(x2)} y ${pct(y1)}–${pct(y2)}`}
+      >
+        <img src={pageImgSrc} className="absolute inset-0 w-full h-full object-cover" alt="" />
+        <div
+          className="absolute border-2 border-violet-400 bg-violet-400/25 rounded-sm"
+          style={{ left: pct(x1), top: pct(y1), width: pct(x2 - x1), height: pct(y2 - y1) }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CitationCard({ source }: { source: SourceReference }) {
+  const ct = source.content_type ?? 'text';
+  const meta = CONTENT_TYPE_META[ct] ?? CONTENT_TYPE_META.text;
+  const Icon = ct === 'structured' ? Table2 : ct === 'image' ? Image : FileText;
+  const hasBbox = source.text_location?.length === 4 && source.page != null;
+
+  return (
+    <div className="p-3 bg-slate-800/30 rounded-xl border border-slate-700/30">
+      {/* Header row */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <Icon className="w-4 h-4 text-violet-400 shrink-0" />
+        <span className="text-sm font-medium text-slate-300 truncate max-w-[180px]" title={source.filename}>
+          {source.filename}
+        </span>
+
+        {/* Content-type badge (only when not plain text) */}
+        {ct !== 'text' && (
+          <span className={`text-xs px-1.5 py-0.5 rounded border font-medium ${meta.color}`}>
+            {meta.label}
+          </span>
+        )}
+
+        {/* Page */}
+        {source.page != null && (
+          <span className="text-xs text-slate-500">p.{source.page}</span>
+        )}
+
+        {/* Score */}
+        <span className="text-xs text-slate-500 ml-auto shrink-0">
+          {(source.score * 100).toFixed(1)}%
+        </span>
+      </div>
+
+      {/* For image chunks: render the actual extracted image */}
+      {ct === 'image' && source.image_data ? (
+        <img
+          src={`data:image/jpeg;base64,${source.image_data}`}
+          alt={source.chunk_text}
+          className="rounded max-w-full max-h-48 object-contain mb-2"
+        />
+      ) : (
+        /* Chunk text preview for text / table chunks */
+        <p className="text-sm text-slate-400 line-clamp-3">{source.chunk_text}</p>
+      )}
+
+      {/* Bounding box thumbnail (text / table chunks with bbox from rich processor) */}
+      {ct !== 'image' && hasBbox && (
+        <BboxIndicator
+          documentId={source.document_id}
+          pageNo={source.page!}
+          loc={source.text_location as [number, number, number, number]}
+          pageWidth={source.page_width}
+          pageHeight={source.page_height}
+          textType={source.text_type}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function Chat() {
   const { agentId, conversationId } = useParams<{ agentId: string; conversationId?: string }>();
@@ -198,24 +334,7 @@ export default function Chat() {
                   {expandedSources.has(msg.id) && (
                     <div className="mt-2 space-y-2">
                       {msg.sources.map((source: SourceReference, idx: number) => (
-                        <div
-                          key={idx}
-                          className="p-3 bg-slate-800/30 rounded-xl border border-slate-700/30"
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            <FileText className="w-4 h-4 text-violet-400" />
-                            <span className="text-sm font-medium text-slate-300">
-                              {source.filename}
-                            </span>
-                            {source.page && (
-                              <span className="text-xs text-slate-500">Page {source.page}</span>
-                            )}
-                            <span className="text-xs text-slate-500 ml-auto">
-                              Score: {(source.score * 100).toFixed(1)}%
-                            </span>
-                          </div>
-                          <p className="text-sm text-slate-400 line-clamp-3">{source.chunk_text}</p>
-                        </div>
+                        <CitationCard key={idx} source={source} />
                       ))}
                     </div>
                   )}

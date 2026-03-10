@@ -28,6 +28,7 @@ dependencies = [
     "docling>=2.0.0",
     "langchain-docling>=0.1.0",
     "pypdf>=4.0.0",
+    "pypdfium2>=4.0.0",
 
     # Text splitting
     "langchain-text-splitters>=0.0.1",

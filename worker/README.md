@@ -98,6 +98,54 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:3000/api/ingestion/collections
 ```
 
+## File Processors
+
+The ingestion worker always uses `RichFileProcessor` — the NeMo-Retriever-style pipeline that produces separate text, table, and image chunk types with bounding boxes and VLM image captions.
+
+### Rich Processor — Qdrant Point Metadata
+
+Every vector point stored by the rich processor carries the following payload fields:
+
+#### Core fields (both processors)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `content` | string | The text to embed and return in RAG responses. For tables, a Markdown rendering; for images, the VLM caption. |
+| `source_file` | string | Original filename (e.g. `report.pdf`). |
+| `chunk_index` | int | 0-based index of this chunk within the document. |
+| `total_chunks` | int | Total number of chunks produced for the document. |
+| `chunk_id` | string | Unique chunk identifier (`{job_id}_{uuid8}`). |
+| `source_type` | string | Always `"file"` for file ingestion. |
+| `file_type` | string | Extension without dot (e.g. `"pdf"`, `"docx"`). |
+| `page_number` | int \| null | 1-based page number where the chunk originates. Null for non-paginated formats (TXT, JSON). |
+| `page` | int \| null | Alias of `page_number` for backward compatibility. |
+
+#### Rich-only fields
+
+| Field | Type | Possible values | Description |
+|-------|------|-----------------|-------------|
+| `content_type` | string | `"text"` `"structured"` `"image"` | Chunk content category. `text` = prose/headers; `structured` = tables; `image` = VLM-captioned embedded image. |
+| `text_type` | string | `"body"` `"header"` `"caption"` `"footnote"` `"list_item"` `"table"` `"picture"` | Fine-grained element type inferred from Docling labels. |
+| `text_location` | [l, t, r, b] \| null | Four floats in **page-point coordinates** | Bounding box of the chunk on the page, in Docling's native coordinate system (origin = bottom-left of the page, points = 1/72 inch). `l`=left, `t`=top, `r`=right, `b`=bottom. Null when Docling has no provenance data for the chunk (e.g. plain-text files, or fallback extraction). |
+| `page_width` | float \| null | Page width in points | Used by the frontend to normalise `text_location` to a [0,1] relative coordinate for CSS overlay rendering. |
+| `page_height` | float \| null | Page height in points | Same as above. A standard A4 portrait page is 595 × 842 pt; US Letter is 612 × 792 pt. |
+| `table_content` | string \| null | Markdown table | Raw Markdown rendering of the table (`structured` chunks only). |
+| `table_format` | string \| null | `"markdown"` | Format of `table_content` (`structured` chunks only). |
+| `image_caption` | string \| null | Free text | VLM-generated description of the embedded image (`image` chunks only). |
+
+#### Coordinate system note
+
+Docling (and PDF) uses a **bottom-left origin**: `b < t` and `(l, b)` is the lower-left corner of the box. The frontend's `BboxIndicator` component converts this to CSS top-left coordinates:
+
+```
+css_top    = 1 - (t / page_height)
+css_left   = l / page_width
+css_width  = (r - l) / page_width
+css_height = (t - b) / page_height
+```
+
+---
+
 ## Supported File Formats
 
 | Format     | Extension       | Processor |
