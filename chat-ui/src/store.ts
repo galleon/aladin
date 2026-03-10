@@ -26,15 +26,23 @@ interface Conversation {
     message_count?: number
 }
 
+export interface SourceReference {
+    filename: string
+    page?: number
+    score?: number
+    // Rich processor fields (NeMo-style enriched metadata)
+    content_type?: 'text' | 'structured' | 'image' | null
+    text_type?: string | null       // header | body | caption | table | picture | …
+    text_location?: [number, number, number, number] | null  // [l, t, r, b] page points
+    page_width?: number | null
+    page_height?: number | null
+}
+
 export interface Message {
     id?: number
     role: 'user' | 'assistant'
     content: string
-    sources?: Array<{
-        filename: string
-        page?: number
-        score?: number
-    }>
+    sources?: SourceReference[]
 }
 
 interface DataDomain {
