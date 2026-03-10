@@ -8,7 +8,7 @@ const PREVIEW_LENGTH = 180;
 // Keys rendered with dedicated UI — excluded from the flat metadata pill list
 const METADATA_KEYS_OMIT = ['content', 'text', 'frame_times', 'fields', 'table_content', 'image_data', 'image_caption'];
 
-/** Render a GFM markdown table string as an HTML <table>. Returns null for non-table input. */
+/** Render a GFM markdown table string as an HTML <table>. Falls back to a <pre> block for non-table input. */
 function MarkdownTable({ md }: { md: string }) {
     const lines = md.trim().split('\n').filter(l => l.trim().startsWith('|'));
     if (lines.length < 2) return <pre className="text-xs text-slate-400 whitespace-pre-wrap">{md}</pre>;

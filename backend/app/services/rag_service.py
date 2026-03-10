@@ -125,7 +125,9 @@ class RAGService:
             for i, doc in enumerate(results):
                 payload = doc.get("payload", {})
                 text = payload.get("content", "") or payload.get("text", "")
-                filename = payload.get("source_file", "") or payload.get("filename", "Unknown")
+                filename = payload.get("source_file", "") or payload.get(
+                    "filename", "Unknown"
+                )
                 score = doc.get("score")
                 logger.info(
                     "Retrieved chunk",
@@ -208,7 +210,9 @@ class RAGService:
             payload = doc.get("payload", {})
             # Worker stores content/source_file; support text/filename for other ingest paths
             text = payload.get("content", "") or payload.get("text", "")
-            filename = payload.get("source_file", "") or payload.get("filename", "Unknown")
+            filename = payload.get("source_file", "") or payload.get(
+                "filename", "Unknown"
+            )
             page = payload.get("page", "N/A")
 
             context_parts.append(f"[Source {i}: {filename}, Page {page}]\n{text}")
@@ -250,9 +254,7 @@ class RAGService:
     # Classic retrieve → generate pipeline (backward compatible)
     # ------------------------------------------------------------------
 
-    def _create_classic_chain(
-        self, agent: Agent, domains: list[DataDomain]
-    ):
+    def _create_classic_chain(self, agent: Agent, domains: list[DataDomain]):
         """Build the original retrieve → generate LangGraph chain."""
 
         def retrieve_node(state: RAGState) -> RAGState:
@@ -274,9 +276,7 @@ class RAGService:
                 content = payload.get("content", "") or payload.get("text", "")
                 if content:
                     knowledge_graph_service.add_chunk_to_graph(
-                        content,
-                        chunk_id=doc.get("id"),
-                        extract_relationships=True
+                        content, chunk_id=doc.get("id"), extract_relationships=True
                     )
 
             # Find reasoning path using knowledge graph
@@ -333,7 +333,9 @@ Context:
                 payload = doc.get("payload", {})
                 document_id = payload.get("document_id") or 0
                 page = payload.get("page") or payload.get("page_number")
-                filename = payload.get("filename") or payload.get("source_file", "Unknown")
+                filename = payload.get("filename") or payload.get(
+                    "source_file", "Unknown"
+                )
                 text = payload.get("text") or payload.get("content", "")
                 chunk_id = payload.get("chunk_id") or str(doc.get("id", ""))
 
@@ -346,7 +348,9 @@ Context:
                             "document_id": document_id,
                             "filename": filename,
                             "page": page,
-                            "chunk_text": (text[:200] + "...") if len(text) > 200 else text,
+                            "chunk_text": (text[:200] + "...")
+                            if len(text) > 200
+                            else text,
                             "score": doc.get("score", 0.0),
                             "content_type": payload.get("content_type"),
                             "text_type": payload.get("text_type"),
@@ -394,6 +398,7 @@ Context:
         # that creates a PostgreSQL Job record (visible in /api/jobs).
         if "ingest_url" in tool_names:
             from ..tools.ingest_url import make_ingest_url_tool
+
             tools = [
                 make_ingest_url_tool(agent.id, agent.owner_id)
                 if getattr(t, "name", None) == "ingest_url"
@@ -451,7 +456,9 @@ Context:
         workflow.add_node("finalize", finalize_node)
 
         workflow.set_entry_point("agent")
-        workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "finalize": "finalize"})
+        workflow.add_conditional_edges(
+            "agent", should_continue, {"tools": "tools", "finalize": "finalize"}
+        )
         workflow.add_edge("tools", "agent")
         workflow.add_edge("finalize", END)
 

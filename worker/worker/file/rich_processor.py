@@ -12,6 +12,7 @@ Compared to the default FileProcessor (Docling text-only), this processor:
 No external nv-ingest service required — uses Docling + pypdfium2 + vLLM already
 running on DGX.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -29,10 +30,9 @@ from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
     PdfPipelineOptions,
     TableFormerMode,
-    VlmPipelineOptions,
+    TableStructureOptions,
 )
 from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.pipeline.vlm_pipeline import VlmPipeline
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
 from qdrant_client import QdrantClient
@@ -43,8 +43,6 @@ from shared.schemas import DocumentChunk, IngestionJobStatus
 from shared.telemetry import IngestionMetrics, get_tracer
 
 from .loader import (
-    _get_docling_prompt,
-    call_external_docling,
     fallback_pdf_extraction,
     get_file_format_map,
     get_pdf_metadata,
@@ -67,16 +65,22 @@ class RichChunk:
     """Extended chunk with NeMo-style metadata (bbox, content_type, etc.)."""
 
     __slots__ = (
-        "id", "content", "source_file", "chunk_index", "total_chunks",
-        "page_number", "page_width", "page_height",
-        "content_type",   # text | structured | image
-        "text_type",      # body | header | footnote | caption | list_item | table | picture
+        "id",
+        "content",
+        "source_file",
+        "chunk_index",
+        "total_chunks",
+        "page_number",
+        "page_width",
+        "page_height",
+        "content_type",  # text | structured | image
+        "text_type",  # body | header | footnote | caption | list_item | table | picture
         "text_location",  # [l, t, r, b] in page points (Docling coord space)
         "table_content",  # raw table markdown (structured only)
-        "table_format",   # "markdown" (structured only)
+        "table_format",  # "markdown" (structured only)
         "image_caption",  # VLM caption (image only)
-        "image_data",     # base64 JPEG of the image (image only) — rendered directly in the UI
-        "metadata",       # extra flat metadata (source_type, file_type, pdf meta, …)
+        "image_data",  # base64 JPEG of the image (image only) — rendered directly in the UI
+        "metadata",  # extra flat metadata (source_type, file_type, pdf meta, …)
     )
 
     def __init__(self, **kwargs):
@@ -151,16 +155,19 @@ class RichFileProcessor:
         if self._converter is None:
             self._converter = DocumentConverter(
                 allowed_formats=[
-                    InputFormat.PDF, InputFormat.DOCX, InputFormat.PPTX,
-                    InputFormat.HTML, InputFormat.MD,
+                    InputFormat.PDF,
+                    InputFormat.DOCX,
+                    InputFormat.PPTX,
+                    InputFormat.HTML,
+                    InputFormat.MD,
                 ],
                 format_options={
                     InputFormat.PDF: PdfFormatOption(
                         pipeline_options=PdfPipelineOptions(
                             do_table_structure=True,
-                            table_structure_options=type(
-                                "T", (), {"mode": TableFormerMode.ACCURATE}
-                            )(),
+                            table_structure_options=TableStructureOptions(
+                                mode=TableFormerMode.ACCURATE
+                            ),
                         )
                     )
                 },
@@ -207,6 +214,7 @@ class RichFileProcessor:
             start_time = time.time()
 
             from pathlib import Path
+
             try:
                 upload_dir = Path(settings.UPLOAD_DIR).resolve()
                 target_path = Path(file_path).resolve()
@@ -221,7 +229,9 @@ class RichFileProcessor:
             file_ext = os.path.splitext(original_filename)[1].lower()
 
             await self.job_ctx.update_job_status(
-                self.job_id, IngestionJobStatus.EXTRACTING, progress=10,
+                self.job_id,
+                IngestionJobStatus.EXTRACTING,
+                progress=10,
                 message=f"Extracting {original_filename}...",
             )
 
@@ -230,24 +240,34 @@ class RichFileProcessor:
             if file_ext == ".txt":
                 content = load_text_file(file_path)
                 plain_chunks = create_chunks_from_content(
-                    content, original_filename, file_ext, self.job_id,
+                    content,
+                    original_filename,
+                    file_ext,
+                    self.job_id,
                     text_splitter=self.text_splitter,
                 )
                 rich_chunks = [self._plain_to_rich(c) for c in plain_chunks]
             elif file_ext == ".json":
                 content = load_json_file(file_path)
                 plain_chunks = create_chunks_from_content(
-                    content, original_filename, file_ext, self.job_id,
+                    content,
+                    original_filename,
+                    file_ext,
+                    self.job_id,
                     text_splitter=self.text_splitter,
                 )
                 rich_chunks = [self._plain_to_rich(c) for c in plain_chunks]
             else:
                 await self.job_ctx.update_job_status(
-                    self.job_id, IngestionJobStatus.PARTITIONING, progress=30,
+                    self.job_id,
+                    IngestionJobStatus.PARTITIONING,
+                    progress=30,
                     message="Extracting structure, tables, and images...",
                 )
                 rich_chunks = await self._process_rich(
-                    file_path, original_filename, file_ext,
+                    file_path,
+                    original_filename,
+                    file_ext,
                 )
 
             extract_duration = (time.time() - extract_start) * 1000
@@ -258,7 +278,9 @@ class RichFileProcessor:
                 return {"chunks_created": 0}
 
             await self.job_ctx.update_job_status(
-                self.job_id, IngestionJobStatus.EMBEDDING, progress=70,
+                self.job_id,
+                IngestionJobStatus.EMBEDDING,
+                progress=70,
                 message=f"Embedding {len(rich_chunks)} chunks ({self._type_summary(rich_chunks)})...",
             )
 
@@ -281,7 +303,10 @@ class RichFileProcessor:
     # ------------------------------------------------------------------
 
     async def _process_rich(
-        self, file_path: str, original_filename: str, file_ext: str,
+        self,
+        file_path: str,
+        original_filename: str,
+        file_ext: str,
     ) -> List[RichChunk]:
         """Extract text chunks + table chunks + image chunks.
 
@@ -295,7 +320,8 @@ class RichFileProcessor:
             rich_chunks = await loop.run_in_executor(
                 None,
                 self._run_rich_extraction,
-                file_path, original_filename,
+                file_path,
+                original_filename,
             )
         except Exception as e:
             logger.error("Rich extraction failed: %s", e)
@@ -303,7 +329,10 @@ class RichFileProcessor:
                 content = fallback_pdf_extraction(file_path)
                 if content:
                     plain = create_chunks_from_content(
-                        content, original_filename, file_ext, self.job_id,
+                        content,
+                        original_filename,
+                        file_ext,
+                        self.job_id,
                         text_splitter=self.text_splitter,
                     )
                     return [self._plain_to_rich(c) for c in plain]
@@ -313,12 +342,14 @@ class RichFileProcessor:
         if file_ext == ".pdf":
             try:
                 image_chunks = await self._extract_pdf_images(
-                    file_path, original_filename,
+                    file_path,
+                    original_filename,
                 )
                 rich_chunks.extend(image_chunks)
             except Exception as e:
                 logger.warning(
-                    "Image extraction failed (non-fatal), text+table chunks preserved: %s", e,
+                    "Image extraction failed (non-fatal), text+table chunks preserved: %s",
+                    e,
                 )
 
         # Recompute chunk_index / total_chunks across the full combined list
@@ -330,7 +361,9 @@ class RichFileProcessor:
         return rich_chunks
 
     def _run_rich_extraction(
-        self, file_path: str, original_filename: str,
+        self,
+        file_path: str,
+        original_filename: str,
     ) -> List[RichChunk]:
         """Synchronous: run Docling, extract text + table chunks with bboxes."""
         file_ext = os.path.splitext(original_filename)[1].lower()
@@ -362,12 +395,20 @@ class RichFileProcessor:
 
         # --- Text chunks ---
         text_chunks = self._extract_text_chunks(
-            doc, original_filename, file_type, doc_meta, page_dims,
+            doc,
+            original_filename,
+            file_type,
+            doc_meta,
+            page_dims,
         )
 
         # --- Table chunks (separate STRUCTURED points) ---
         table_chunks = self._extract_table_chunks(
-            doc, original_filename, file_type, doc_meta, page_dims,
+            doc,
+            original_filename,
+            file_type,
+            doc_meta,
+            page_dims,
             start_index=len(text_chunks),
         )
 
@@ -380,7 +421,9 @@ class RichFileProcessor:
 
         logger.info(
             "Rich extraction: %d text + %d table chunks from %s",
-            len(text_chunks), len(table_chunks), original_filename,
+            len(text_chunks),
+            len(table_chunks),
+            original_filename,
         )
         return all_chunks
 
@@ -396,6 +439,7 @@ class RichFileProcessor:
         if chunker is None:
             try:
                 from docling.chunking import HierarchicalChunker
+
                 chunker = HierarchicalChunker()
             except ImportError:
                 chunker = None
@@ -412,20 +456,22 @@ class RichFileProcessor:
                 page_no, bbox, pw, ph = self._prov_info(chunk_data, page_dims)
                 text_type = self._infer_text_type(chunk_data)
 
-                rich.append(RichChunk(
-                    id=f"{self.job_id}_{uuid.uuid4().hex[:8]}",
-                    content=text,
-                    source_file=original_filename,
-                    chunk_index=i,
-                    total_chunks=total,
-                    page_number=page_no,
-                    page_width=pw,
-                    page_height=ph,
-                    content_type=CONTENT_TYPE_TEXT,
-                    text_type=text_type,
-                    text_location=bbox,
-                    metadata={**doc_meta},
-                ))
+                rich.append(
+                    RichChunk(
+                        id=f"{self.job_id}_{uuid.uuid4().hex[:8]}",
+                        content=text,
+                        source_file=original_filename,
+                        chunk_index=i,
+                        total_chunks=total,
+                        page_number=page_no,
+                        page_width=pw,
+                        page_height=ph,
+                        content_type=CONTENT_TYPE_TEXT,
+                        text_type=text_type,
+                        text_location=bbox,
+                        metadata={**doc_meta},
+                    )
+                )
             return rich
         else:
             # Fallback: paragraph split
@@ -477,26 +523,30 @@ class RichFileProcessor:
 
             embed_text = f"{caption}\n\n{table_md}".strip() if caption else table_md
 
-            chunks.append(RichChunk(
-                id=f"{self.job_id}_{uuid.uuid4().hex[:8]}",
-                content=embed_text,
-                source_file=original_filename,
-                chunk_index=start_index + len(chunks),
-                total_chunks=0,  # fixed later
-                page_number=page_no,
-                page_width=pw,
-                page_height=ph,
-                content_type=CONTENT_TYPE_STRUCTURED,
-                text_type="table",
-                text_location=bbox,
-                table_content=table_md,
-                table_format="markdown",
-                metadata={**doc_meta},
-            ))
+            chunks.append(
+                RichChunk(
+                    id=f"{self.job_id}_{uuid.uuid4().hex[:8]}",
+                    content=embed_text,
+                    source_file=original_filename,
+                    chunk_index=start_index + len(chunks),
+                    total_chunks=0,  # fixed later
+                    page_number=page_no,
+                    page_width=pw,
+                    page_height=ph,
+                    content_type=CONTENT_TYPE_STRUCTURED,
+                    text_type="table",
+                    text_location=bbox,
+                    table_content=table_md,
+                    table_format="markdown",
+                    metadata={**doc_meta},
+                )
+            )
         return chunks
 
     async def _extract_pdf_images(
-        self, file_path: str, original_filename: str,
+        self,
+        file_path: str,
+        original_filename: str,
     ) -> List[RichChunk]:
         """Extract images from PDF via pypdfium2, caption with VLM."""
         try:
@@ -520,38 +570,43 @@ class RichFileProcessor:
 
         # Collect (image, bbox, page_no, page_w, page_h) tuples first, then caption in parallel
         candidates = []
-        for page_idx in range(len(pdf)):
-            page = pdf[page_idx]
-            page_width = page.get_width()
-            page_height = page.get_height()
+        try:
+            for page_idx in range(len(pdf)):
+                page = pdf[page_idx]
+                page_width = page.get_width()
+                page_height = page.get_height()
 
-            # filter= accepts a list of FPDF_PAGEOBJ_* int constants — yields PdfImage directly
-            for obj in page.get_objects(filter=[IMAGE_OBJ_TYPE]):
-                try:
-                    bitmap = obj.get_bitmap(render=True)
-                    pil_image = bitmap.to_pil()
-                except Exception as e:
-                    logger.debug("Image extraction failed page %d: %s", page_idx + 1, e)
-                    continue
+                # filter= accepts a list of FPDF_PAGEOBJ_* int constants — yields PdfImage directly
+                for obj in page.get_objects(filter=[IMAGE_OBJ_TYPE]):
+                    try:
+                        bitmap = obj.get_bitmap(render=True)
+                        pil_image = bitmap.to_pil()
+                    except Exception as e:
+                        logger.debug(
+                            "Image extraction failed page %d: %s", page_idx + 1, e
+                        )
+                        continue
 
-                # Skip tiny images (icons, decorations)
-                if pil_image.width < 50 or pil_image.height < 50:
-                    continue
+                    # Skip tiny images (icons, decorations)
+                    if pil_image.width < 50 or pil_image.height < 50:
+                        continue
 
-                try:
-                    bbox_obj = obj.get_pos()
-                    bbox = [
-                        float(bbox_obj.left),
-                        float(bbox_obj.top),
-                        float(bbox_obj.right),
-                        float(bbox_obj.bottom),
-                    ]
-                except Exception:
-                    bbox = None
+                    try:
+                        bbox_obj = obj.get_pos()
+                        bbox = [
+                            float(bbox_obj.left),
+                            float(bbox_obj.top),
+                            float(bbox_obj.right),
+                            float(bbox_obj.bottom),
+                        ]
+                    except Exception:
+                        bbox = None
 
-                candidates.append((pil_image, bbox, page_idx + 1, page_width, page_height))
-
-        pdf.close()
+                    candidates.append(
+                        (pil_image, bbox, page_idx + 1, page_width, page_height)
+                    )
+        finally:
+            pdf.close()
 
         if not candidates:
             return []
@@ -561,14 +616,16 @@ class RichFileProcessor:
 
         async def caption_with_sem(pil_image, bbox, page_no, pw, ph):
             async with semaphore:
-                caption, image_data = await self._caption_image(pil_image, original_filename)
+                caption, image_data = await self._caption_image(
+                    pil_image, original_filename
+                )
             if not caption:
                 return None
             return RichChunk(
                 id=f"{self.job_id}_{uuid.uuid4().hex[:8]}",
                 content=caption,
                 source_file=original_filename,
-                chunk_index=0,    # recomputed by caller
+                chunk_index=0,  # recomputed by caller
                 total_chunks=0,
                 page_number=page_no,
                 page_width=pw,
@@ -582,7 +639,10 @@ class RichFileProcessor:
             )
 
         results = await asyncio.gather(
-            *[caption_with_sem(img, bbox, pno, pw, ph) for img, bbox, pno, pw, ph in candidates]
+            *[
+                caption_with_sem(img, bbox, pno, pw, ph)
+                for img, bbox, pno, pw, ph in candidates
+            ]
         )
         chunks = [r for r in results if r is not None]
         logger.info("Extracted %d image chunks from %s", len(chunks), original_filename)
@@ -620,7 +680,9 @@ class RichFileProcessor:
                             "content": [
                                 {
                                     "type": "image_url",
-                                    "image_url": {"url": f"data:image/jpeg;base64,{b64_captured}"},
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{b64_captured}"
+                                    },
                                 },
                                 {
                                     "type": "text",
@@ -715,7 +777,7 @@ class RichFileProcessor:
             label = str(chunk_data.label).lower()
         # Try meta
         elif hasattr(chunk_data, "meta") and hasattr(chunk_data.meta, "doc_items"):
-            for item in (chunk_data.meta.doc_items or []):
+            for item in chunk_data.meta.doc_items or []:
                 lbl = getattr(item, "label", "")
                 if lbl:
                     label = str(lbl).lower()
@@ -752,6 +814,7 @@ class RichFileProcessor:
     @staticmethod
     def _type_summary(chunks: List[RichChunk]) -> str:
         from collections import Counter
+
         counts = Counter(c.content_type for c in chunks)
         return ", ".join(f"{v} {k}" for k, v in counts.items())
 
@@ -765,9 +828,14 @@ class RichFileProcessor:
             return
         try:
             test = self.embedding_client.embeddings.create(
-                input=["test"], model=self.embedding_model_id,
+                input=["test"],
+                model=self.embedding_model_id,
             )
-            vector_size = len(test.data[0].embedding) if test.data else settings.EMBEDDING_DIMENSION
+            vector_size = (
+                len(test.data[0].embedding)
+                if test.data
+                else settings.EMBEDDING_DIMENSION
+            )
         except Exception as e:
             vector_size = settings.EMBEDDING_DIMENSION
             logger.warning("Embedding dim detection failed: %s", e)
@@ -779,10 +847,11 @@ class RichFileProcessor:
     async def _embed_and_store(self, chunks: List[RichChunk]):
         batch_size = 100
         for i in range(0, len(chunks), batch_size):
-            batch = chunks[i: i + batch_size]
+            batch = chunks[i : i + batch_size]
             texts = [truncate_for_embedding(c.content or "") for c in batch]
             response = self.embedding_client.embeddings.create(
-                model=self.embedding_model_id, input=texts,
+                model=self.embedding_model_id,
+                input=texts,
             )
             embeddings = [e.embedding for e in response.data]
             points = [
@@ -795,7 +864,9 @@ class RichFileProcessor:
             ]
             self.qdrant.upsert(collection_name=self.collection_name, points=points)
             logger.info(
-                "Rich processor: stored %d chunks in %s", len(points), self.collection_name,
+                "Rich processor: stored %d chunks in %s",
+                len(points),
+                self.collection_name,
             )
             for chunk in batch:
                 logger.debug(
@@ -822,10 +893,10 @@ class RichFileProcessor:
             "page_number": chunk.page_number,
             "page": chunk.page_number,  # alias for backward-compat with rag_service / legacy chunks
             # NeMo-style enriched fields
-            "content_type": chunk.content_type,       # text | structured | image
-            "text_type": chunk.text_type or "body",   # header | body | caption | …
-            "text_location": chunk.text_location,      # [l, t, r, b] page points or None
-            "page_width": chunk.page_width,            # for bbox normalisation in UI
+            "content_type": chunk.content_type,  # text | structured | image
+            "text_type": chunk.text_type or "body",  # header | body | caption | …
+            "text_location": chunk.text_location,  # [l, t, r, b] page points or None
+            "page_width": chunk.page_width,  # for bbox normalisation in UI
             "page_height": chunk.page_height,
         }
 

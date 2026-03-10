@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Document, User
-from ..config import settings
 from ..services.auth import get_current_active_user
 import structlog
 
@@ -35,11 +34,7 @@ async def get_document_page_image(
     ``scale`` controls render DPI (default 1.5 ≈ 108 dpi for a standard 72-dpi PDF).
     The caller must own a data domain that contains this document.
     """
-    document = (
-        db.query(Document)
-        .filter(Document.id == document_id)
-        .first()
-    )
+    document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -48,7 +43,9 @@ async def get_document_page_image(
         raise HTTPException(status_code=403, detail="Access denied")
 
     if document.file_type != "pdf":
-        raise HTTPException(status_code=400, detail="Page images are only available for PDF documents")
+        raise HTTPException(
+            status_code=400, detail="Page images are only available for PDF documents"
+        )
 
     file_path = document.filename  # stored as absolute path by the upload handler
     if not os.path.exists(file_path):
@@ -57,14 +54,27 @@ async def get_document_page_image(
     try:
         import pypdfium2 as pdfium
     except ImportError:
-        logger.warning("pypdfium2 not installed; page thumbnail unavailable", document_id=document_id)
-        raise HTTPException(status_code=501, detail="PDF page rendering is not available on this server (pypdfium2 not installed)")
+        logger.warning(
+            "pypdfium2 not installed; page thumbnail unavailable",
+            document_id=document_id,
+        )
+        raise HTTPException(
+            status_code=501,
+            detail="PDF page rendering is not available on this server (pypdfium2 not installed)",
+        )
 
     try:
         pdf = pdfium.PdfDocument(file_path)
+    except Exception as e:
+        logger.error("Failed to open PDF", document_id=document_id, error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to open PDF document")
+
+    try:
         if page_no < 1 or page_no > len(pdf):
-            pdf.close()
-            raise HTTPException(status_code=404, detail=f"Page {page_no} does not exist (document has {len(pdf)} pages)")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Page {page_no} does not exist (document has {len(pdf)} pages)",
+            )
 
         page = pdf[page_no - 1]  # pypdfium2 is 0-indexed
         bitmap = page.render(scale=scale, rotation=0)
@@ -73,7 +83,6 @@ async def get_document_page_image(
         buf = io.BytesIO()
         pil_image.convert("RGB").save(buf, format="JPEG", quality=85)
         buf.seek(0)
-        pdf.close()
 
         return Response(
             content=buf.read(),
@@ -83,5 +92,9 @@ async def get_document_page_image(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Page render failed", document_id=document_id, page_no=page_no, error=str(e))
+        logger.error(
+            "Page render failed", document_id=document_id, page_no=page_no, error=str(e)
+        )
         raise HTTPException(status_code=500, detail="Failed to render page image")
+    finally:
+        pdf.close()
