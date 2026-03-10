@@ -93,12 +93,18 @@ class DummyVLMBackend:
 
 
 # cosmos-reason2-8b: max context 32768 tokens. At 640px max side (640×360 for 16:9),
-# each frame is ~230k pixels ≈ 1.2k visual tokens; 8 frames ≈ 9.5k — well within budget.
+# each frame is ~230k pixels ≈ 1.2k visual tokens; 16 frames ≈ 19k — well within budget.
 _COSMOS_R2_DEFAULT_MAX_SIDE = 640
-_COSMOS_R2_SYSTEM_PROMPT = (
-    "You are a video analysis assistant. Reason carefully about the provided frames, "
-    "then output a structured JSON response.\n"
-    "Use <think>...</think> for your reasoning, then write the final JSON answer after the closing tag."
+_COSMOS_R2_DEFAULT_MAX_FRAMES = 16  # VSS uses 20; 16 is safe at 640px within 32k context
+_COSMOS_R2_MAX_FRAMES_CAP = 20      # hard cap matching vLLM limit_mm_per_prompt guidance
+_DEFAULT_MAX_FRAMES = 8             # non-cosmos default
+_COSMOS_R2_SYSTEM_PROMPT = "You are a video analysis assistant. Output a structured JSON response."
+# Reasoning format instruction appended to the user prompt (not system) for cosmos-reason2.
+# Per NVIDIA VSS pattern: reasoning instruction in user prompt is more reliably followed by vLLM.
+_COSMOS_R2_REASONING_SUFFIX = (
+    "\n\nAnswer using the following format:\n\n"
+    "<think>\nYour reasoning.\n</think>\n\n"
+    "Write your final JSON answer immediately after the </think> tag."
 )
 
 
@@ -318,10 +324,20 @@ class OpenAICompatibleVLMBackend:
     ) -> dict[str, Any]:
         is_cosmos = is_cosmos_reason2_model(self.model_id)
         # Frame resize: auto-detect per model when max_side == 0.
-        # cosmos-reason2-8b: 32768-token context; 640px max side keeps 8 frames within budget.
         effective_max_side = self.max_side if self.max_side > 0 else (
             _COSMOS_R2_DEFAULT_MAX_SIDE if is_cosmos else 0
         )
+
+        # Max frames: env var > auto-detect per model.
+        try:
+            from shared.config import settings as _settings
+            _cfg_max = _settings.VLM_MAX_FRAMES
+        except Exception:
+            _cfg_max = 0
+        if _cfg_max > 0:
+            max_images = min(_cfg_max, _COSMOS_R2_MAX_FRAMES_CAP if is_cosmos else _cfg_max)
+        else:
+            max_images = _COSMOS_R2_DEFAULT_MAX_FRAMES if is_cosmos else _DEFAULT_MAX_FRAMES
 
         prompt_id = PROCEDURE_PROMPT_ID if mode == "procedure" else RACE_PROMPT_ID
         num_frames = len([f for f in frames_bgr if f is not None])
@@ -342,7 +358,6 @@ class OpenAICompatibleVLMBackend:
             (f, t) for f, t in zip(frames_bgr, frame_times)
             if f is not None and isinstance(f, np.ndarray)
         ]
-        max_images = 8
         image_content: list[dict[str, Any]] = []
         used_times: list[float] = []
         for frame, t in valid_frames[:max_images]:
@@ -372,10 +387,15 @@ class OpenAICompatibleVLMBackend:
         )
         full_prompt = f"{timestamp_header}\n\n{prompt}"
 
+        # For cosmos-reason2: append reasoning format to user prompt (not system prompt).
+        # Per NVIDIA VSS pattern, vLLM-served models follow user prompt instructions more reliably.
+        if is_cosmos:
+            full_prompt = full_prompt + _COSMOS_R2_REASONING_SUFFIX
+
         # Images before text (NVIDIA/cosmos-reason2 pattern)
         content: list[dict[str, Any]] = image_content + [{"type": "text", "text": full_prompt}]
 
-        # System prompt: cosmos-reason2 benefits from explicit reasoning-format instruction
+        # Minimal system prompt for cosmos-reason2; reasoning instruction is in user prompt above.
         messages: list[dict[str, Any]] = []
         if is_cosmos:
             messages.append({"role": "system", "content": _COSMOS_R2_SYSTEM_PROMPT})
@@ -385,10 +405,13 @@ class OpenAICompatibleVLMBackend:
             base = self.api_base.rstrip("/")
             base_url = base if base.endswith("v1") else f"{base}/v1"
             client = OpenAI(api_key=self.api_key, base_url=base_url)
+            # no_repeat_ngram_size=3 reduces repetitive captions (vLLM sampling param, cosmos-reason2 only)
+            extra_body = {"no_repeat_ngram_size": 3} if is_cosmos else {}
             resp = client.chat.completions.create(
                 model=self.model_id,
                 messages=messages,
                 max_tokens=2048,
+                extra_body=extra_body or None,
             )
             # Log raw API response (formatted for review)
             log_payload = {
