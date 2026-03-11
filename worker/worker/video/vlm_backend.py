@@ -98,7 +98,7 @@ _COSMOS_R2_DEFAULT_MAX_SIDE = 640
 _COSMOS_R2_DEFAULT_MAX_FRAMES = 16  # VSS uses 20; 16 is safe at 640px within 32k context
 _COSMOS_R2_MAX_FRAMES_CAP = 20      # hard cap matching vLLM limit_mm_per_prompt guidance
 _DEFAULT_MAX_FRAMES = 8             # non-cosmos default
-_COSMOS_R2_SYSTEM_PROMPT = "You are a video analysis assistant. Output a structured JSON response."
+_COSMOS_R2_SYSTEM_PROMPT = "You are a video analysis assistant."
 # Reasoning format instruction appended to the user prompt (not system) for cosmos-reason2.
 # Per NVIDIA VSS pattern: reasoning instruction in user prompt is more reliably followed by vLLM.
 _COSMOS_R2_REASONING_SUFFIX = (
@@ -332,7 +332,8 @@ class OpenAICompatibleVLMBackend:
         try:
             from shared.config import settings as _settings
             _cfg_max = _settings.VLM_MAX_FRAMES
-        except Exception:
+        except (ImportError, AttributeError) as e:
+            logger.warning("Could not read VLM_MAX_FRAMES from config: %s", e)
             _cfg_max = 0
         if _cfg_max > 0:
             max_images = min(_cfg_max, _COSMOS_R2_MAX_FRAMES_CAP if is_cosmos else _cfg_max)
@@ -406,13 +407,14 @@ class OpenAICompatibleVLMBackend:
             base_url = base if base.endswith("v1") else f"{base}/v1"
             client = OpenAI(api_key=self.api_key, base_url=base_url)
             # no_repeat_ngram_size=3 reduces repetitive captions (vLLM sampling param, cosmos-reason2 only)
-            extra_body = {"no_repeat_ngram_size": 3} if is_cosmos else {}
-            resp = client.chat.completions.create(
-                model=self.model_id,
-                messages=messages,
-                max_tokens=2048,
-                extra_body=extra_body or None,
-            )
+            create_kwargs: dict[str, Any] = {
+                "model": self.model_id,
+                "messages": messages,
+                "max_tokens": 2048,
+            }
+            if is_cosmos:
+                create_kwargs["extra_body"] = {"no_repeat_ngram_size": 3}
+            resp = client.chat.completions.create(**create_kwargs)
             # Log raw API response (formatted for review)
             log_payload = {
                 "id": getattr(resp, "id", None),
