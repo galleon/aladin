@@ -171,21 +171,71 @@ THINK_OPEN = "<think>"
 THINK_CLOSE = "</think>"
 
 
-def _extract_think_block(text: str) -> tuple[str, str]:
+_WRAPPER_TAGS = ["<answer>", "</answer>", "<summary>", "</summary>"]
+
+
+def _strip_wrapper_tags(text: str) -> str:
+    """Strip answer/summary wrapper tags sometimes emitted by cosmos-reason2 after think removal."""
+    for tag in _WRAPPER_TAGS:
+        text = text.replace(tag, "")
+    return text.strip()
+
+
+def _extract_think_block(text: str) -> tuple[str, str | None]:
     """
     Extract think block from VLM response (e.g. cosmos-reason2).
-    Returns (reasoning_text, caption_text). Caption is the content after think block, used for embedding.
-    Reasoning is stored for UI/debug.
+    Returns (reasoning_text, caption_text_or_None).
+
+    caption is None when no think tags were found at all (caller should use original text).
+    caption is "" (empty string) when think tags were present but left no answer content —
+    callers must NOT fall back to original text in that case (it would reintroduce the think block).
+
+    Handles three cases:
+      1. Both <think> and </think> present — normal chain-of-thought.
+      2. Only </think> present — system prompt contained <think>; model generated the closing tag.
+      3. Only <think> present — generation truncated at max_tokens; reasoning is incomplete.
     """
-    if THINK_OPEN not in text or THINK_CLOSE not in text:
-        return ("", text.strip())
-    start = text.find(THINK_OPEN)
-    end = text.find(THINK_CLOSE)
-    if start == -1 or end == -1 or end <= start:
-        return ("", text.strip())
-    reasoning = text[start + len(THINK_OPEN) : end].strip()
-    caption = text[end + len(THINK_CLOSE) :].strip()
-    return (reasoning, caption)
+    has_open = THINK_OPEN in text
+    has_close = THINK_CLOSE in text
+
+    if has_open and has_close:
+        # Case 1: normal — find </think> that appears *after* <think>
+        start = text.find(THINK_OPEN)
+        end = text.find(THINK_CLOSE, start + len(THINK_OPEN))
+        if end != -1:
+            reasoning = text[start + len(THINK_OPEN) : end].strip()
+            caption = _strip_wrapper_tags(text[end + len(THINK_CLOSE) :])
+            return (reasoning, caption)
+        # Malformed: </think> exists but only before <think> — treat as truncated (Case 3).
+        # Strip the stray </think> from the preamble before returning.
+        reasoning = text[start + len(THINK_OPEN) :].strip()
+        caption = _strip_wrapper_tags(text[:start].replace(THINK_CLOSE, ""))
+        logger.warning(
+            "Malformed think block ordering in VLM response (</think> before <think>); "
+            "treating as truncated."
+        )
+        return (reasoning, caption)
+
+    if not has_open and has_close:
+        # Case 2: only </think> — opening tag was injected via system/user prompt
+        end = text.find(THINK_CLOSE)
+        reasoning = text[:end].strip()
+        caption = _strip_wrapper_tags(text[end + len(THINK_CLOSE) :])
+        return (reasoning, caption)
+
+    if has_open and not has_close:
+        # Case 3: truncated generation — <think> opened but never closed
+        start = text.find(THINK_OPEN)
+        reasoning = text[start + len(THINK_OPEN) :].strip()
+        caption = _strip_wrapper_tags(text[:start])
+        logger.warning(
+            "Incomplete think block in VLM response (generation likely truncated). "
+            "Consider increasing max_tokens."
+        )
+        return (reasoning, caption)
+
+    # No think tags found — return None for caption so callers know to use original text.
+    return ("", None)
 
 
 def _salvage_caption_from_truncated(json_str: str) -> str:
@@ -215,7 +265,10 @@ def _parse_vlm_response(text: str) -> dict[str, Any]:
         return dict(defaults)
 
     reasoning, caption_part = _extract_think_block(text)
-    text_to_parse = caption_part if caption_part else text
+    # caption_part is None  → no think tags present; parse original text as-is.
+    # caption_part is ""    → think tags were present but left no content; use empty string
+    #                         (do NOT fall back to original text — that would reintroduce think block).
+    text_to_parse = text if caption_part is None else caption_part
 
     json_str = _extract_json_object_from_text(text_to_parse)
     if not json_str:
