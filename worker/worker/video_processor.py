@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import subprocess
 import tempfile
 import time
 import uuid
@@ -31,6 +32,109 @@ from .video.vlm_backend import DummyVLMBackend, OpenAICompatibleVLMBackend, unpa
 from .video.schemas import VideoChunk
 
 logger = logging.getLogger(__name__)
+
+
+def _get_minio_client():
+    """Return a MinIO client if MINIO_ENDPOINT is configured, else None."""
+    if not settings.MINIO_ENDPOINT:
+        return None
+    try:
+        from minio import Minio
+        client = Minio(
+            settings.MINIO_ENDPOINT,
+            access_key=settings.MINIO_ACCESS_KEY,
+            secret_key=settings.MINIO_SECRET_KEY,
+            secure=False,
+        )
+        # Ensure bucket exists
+        if not client.bucket_exists(settings.MINIO_BUCKET):
+            client.make_bucket(settings.MINIO_BUCKET)
+        return client
+    except Exception as exc:
+        logger.warning("MinIO unavailable (%s); clip storage disabled", exc)
+        return None
+
+
+def _extract_and_upload_clip(
+    minio_client,
+    video_path: str,
+    video_id: str,
+    chunk_idx: int,
+    t_start: float,
+    t_end: float,
+) -> str | None:
+    """
+    Extract a segment clip from video_path using ffmpeg (stream copy, no re-encode)
+    and upload it to MinIO.  Returns the clip_key on success, None on failure.
+    """
+    if t_start >= t_end:
+        logger.warning(
+            "Invalid timestamps for clip extraction: t_start=%.3f >= t_end=%.3f (video_id=%s chunk=%d)",
+            t_start,
+            t_end,
+            video_id,
+            chunk_idx,
+        )
+        return None
+
+    _MAX_STDERR_LOG = 500
+
+    duration = t_end - t_start
+    clip_key = f"{video_id}/{chunk_idx}.mp4"
+    clip_tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            clip_tmp = f.name
+
+        cmd = [
+            "ffmpeg",
+            "-y",           # overwrite
+            "-ss", str(t_start),
+            "-i", video_path,
+            "-t", str(duration),
+            "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
+            clip_tmp,
+        ]
+        try:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "ffmpeg clip extraction timed out for %s chunk %d", video_id, chunk_idx
+            )
+            return None
+
+        if result.returncode != 0:
+            logger.warning(
+                "ffmpeg clip extraction failed for %s chunk %d: %s",
+                video_id,
+                chunk_idx,
+                result.stderr.decode("utf-8", errors="replace")[-_MAX_STDERR_LOG:],
+            )
+            return None
+
+        minio_client.fput_object(
+            settings.MINIO_BUCKET,
+            clip_key,
+            clip_tmp,
+            content_type="video/mp4",
+        )
+        logger.debug("Uploaded clip %s to MinIO bucket %s", clip_key, settings.MINIO_BUCKET)
+        return clip_key
+    except Exception as exc:
+        logger.warning("Failed to extract/upload clip %s chunk %d: %s", video_id, chunk_idx, exc)
+        return None
+    finally:
+        if clip_tmp and os.path.exists(clip_tmp):
+            try:
+                os.remove(clip_tmp)
+            except OSError:
+                pass
 
 
 class VideoProcessor:
@@ -62,6 +166,9 @@ class VideoProcessor:
             port=settings.QDRANT_PORT,
             api_key=settings.QDRANT_API_KEY,
         )
+
+        # MinIO client (None when MINIO_ENDPOINT is not configured)
+        self.minio_client = _get_minio_client()
 
     def _get_vlm_backend(
         self,
@@ -218,6 +325,18 @@ class VideoProcessor:
                                 "hash": chunk_data["hash"],
                                 "cv_meta": chunk_data.get("cv_meta", "[]"),
                             }
+                            # Extract and upload clip to MinIO if configured
+                            if self.minio_client is not None:
+                                clip_key = _extract_and_upload_clip(
+                                    self.minio_client,
+                                    file_path,
+                                    chunk_data["video_id"],
+                                    chunk_idx,
+                                    chunk_data["t_start"],
+                                    chunk_data["t_end"],
+                                )
+                                if clip_key is not None:
+                                    meta["clip_key"] = clip_key
                             chunks.append({"text": chunk_data["index_text"], "metadata": meta})
                             if settings.LOG_VLM_OUTCOME and (
                                 chunk_idx % settings.LOG_VLM_OUTCOME_SAMPLE_EVERY == 0

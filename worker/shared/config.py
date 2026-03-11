@@ -153,6 +153,14 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
 
+    # MinIO (optional, for video segment clip storage)
+    # When set, the worker extracts and uploads video segment clips; store clip_key in Qdrant payload.
+    # Leave unset to disable clip storage (graceful degradation — no crash, no clip_key in payload).
+    MINIO_ENDPOINT: Optional[str] = os.getenv("MINIO_ENDPOINT")
+    MINIO_ACCESS_KEY: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+    MINIO_SECRET_KEY: str = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+    MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "clips")
+
 
     class Config:
         env_file = ".env"

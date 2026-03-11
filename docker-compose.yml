@@ -43,6 +43,23 @@ services:
             timeout: 5s
             retries: 5
 
+    minio:
+        image: minio/minio:latest
+        ports:
+            - "9000:9000"   # S3 API
+            - "9001:9001"   # Console
+        environment:
+            MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+            MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+        command: server /data --console-address ":9001"
+        volumes:
+            - minio_data:/data
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+
     # Optional: Jaeger for tracing (ingestion pipeline observability)
     jaeger:
         image: jaegertracing/all-in-one:latest
@@ -101,6 +118,11 @@ services:
             TTS_API_BASE: http://spark-2.internal:8011/v1
             TTS_API_KEY: sk-dummy-key
             TTS_MODEL: kokoro-82m
+            # MinIO (optional, for video clip storage)
+            MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+            MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+            MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+            MINIO_BUCKET: ${MINIO_BUCKET:-clips}
             # Telemetry (optional)
             OTEL_ENABLED: ${OTEL_ENABLED:-false}
             OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
@@ -199,6 +221,11 @@ services:
             OCR_DET_LIMIT_SIDE_LEN: ${OCR_DET_LIMIT_SIDE_LEN:-1920}
             # YOLO imgsz: 1280 = better for 4K, 640 = faster (default)
             CV_IMGSZ: ${CV_IMGSZ:-1280}
+            # MinIO (optional, for video clip storage)
+            MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+            MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+            MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+            MINIO_BUCKET: ${MINIO_BUCKET:-clips}
             WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
             JOB_TIMEOUT: ${JOB_TIMEOUT:-600}
             CHUNK_SIZE: ${CHUNK_SIZE:-1000}
@@ -247,4 +274,5 @@ volumes:
     postgres_data:
     redis_data:
     qdrant_data:
+    minio_data:
     uploads_data:

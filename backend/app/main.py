@@ -9,6 +9,7 @@ from .config import settings, DEFAULT_SECRET_KEY
 from .database import engine, Base
 from .routers import (
     auth,
+    clips,
     data_domains,
     documents,
     agents,
@@ -78,6 +79,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, prefix="/api")
+app.include_router(clips.router, prefix="/api")
 app.include_router(data_domains.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
