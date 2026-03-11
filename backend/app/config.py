@@ -117,12 +117,13 @@ class Settings(BaseSettings):
     MCP_SERVER_URL: str | None = os.getenv("MCP_SERVER_URL", None)
 
     # MinIO (optional, for video segment clip storage)
-    MINIO_ENDPOINT: str | None = os.getenv("MINIO_ENDPOINT", None)
+    MINIO_ENDPOINT: str | None = os.getenv("MINIO_ENDPOINT") or None
     MINIO_ACCESS_KEY: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
     MINIO_SECRET_KEY: str = os.getenv("MINIO_SECRET_KEY", "minioadmin")
     MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "clips")
-    # Presigned URL TTL in seconds for clip serving (default 30 s)
-    MINIO_PRESIGN_TTL_SECONDS: int = int(os.getenv("MINIO_PRESIGN_TTL_SECONDS", "30"))
+    MINIO_SECURE: bool = os.getenv("MINIO_SECURE", "false").lower() == "true"
+    # Presigned URL TTL in seconds (default 300 s — enough for slow clients to begin buffering)
+    MINIO_PRESIGN_TTL_SECONDS: int = int(os.getenv("MINIO_PRESIGN_TTL_SECONDS", "300"))
 
     # Email (for transcription job completion notification)
     EMAIL_ENABLED: bool = os.getenv("EMAIL_ENABLED", "false").lower() == "true"

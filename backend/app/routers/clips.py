@@ -5,9 +5,9 @@ GET /api/clips/{collection}/{point_id}
   - Authenticated: requires active user
   - Fetches the Qdrant point for point_id in collection
   - Extracts clip_key from the payload
-  - Returns a 307 redirect to a short-lived MinIO presigned URL (30 s TTL)
+  - Returns a 307 redirect to a short-lived MinIO presigned URL (TTL = MINIO_PRESIGN_TTL_SECONDS)
   - Returns 404 when the point has no clip_key or the point does not exist
-  - Returns 503 when MinIO is not configured
+  - Returns 503 when MinIO is not configured or Qdrant is unreachable
 """
 
 import logging
@@ -16,6 +16,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
 
 from ..config import settings
 from ..models import User
@@ -48,7 +49,7 @@ def _get_minio_client():
             settings.MINIO_ENDPOINT,
             access_key=settings.MINIO_ACCESS_KEY,
             secret_key=settings.MINIO_SECRET_KEY,
-            secure=False,
+            secure=settings.MINIO_SECURE,
         )
         return client
     except Exception as exc:
@@ -61,9 +62,9 @@ def _get_minio_client():
     summary="Redirect to a presigned URL for a video segment clip",
     response_class=RedirectResponse,
     responses={
-        307: {"description": "Redirect to presigned MinIO URL (30 s TTL)"},
+        307: {"description": "Redirect to presigned MinIO URL"},
         404: {"description": "Point not found or has no clip"},
-        503: {"description": "Clip storage not configured or unavailable"},
+        503: {"description": "Clip storage not configured, unavailable, or Qdrant unreachable"},
     },
 )
 async def get_clip(
@@ -75,16 +76,22 @@ async def get_clip(
     minio_client = _get_minio_client()
     qdrant = _get_qdrant_client()
 
-    # Retrieve the Qdrant point
+    # Retrieve the Qdrant point — distinguish "not found" (404) from connection errors (503)
     try:
         results = qdrant.retrieve(
             collection_name=collection,
             ids=[point_id],
             with_payload=True,
         )
+    except UnexpectedResponse as exc:
+        # 404 from Qdrant = collection or point genuinely absent
+        if exc.status_code == 404:
+            raise HTTPException(status_code=404, detail="Collection or point not found.") from exc
+        logger.error("Qdrant error for %s/%s: %s", collection, point_id, exc)
+        raise HTTPException(status_code=503, detail="Vector store returned an error.") from exc
     except Exception as exc:
-        logger.error("Qdrant retrieve failed for %s/%s: %s", collection, point_id, exc)
-        raise HTTPException(status_code=404, detail="Collection or point not found.") from exc
+        logger.error("Qdrant unreachable for %s/%s: %s", collection, point_id, exc)
+        raise HTTPException(status_code=503, detail="Vector store is unavailable.") from exc
 
     if not results:
         raise HTTPException(status_code=404, detail="Point not found.")
@@ -94,7 +101,7 @@ async def get_clip(
     if not clip_key:
         raise HTTPException(status_code=404, detail="No clip available for this point.")
 
-    # Generate a presigned URL with a short TTL
+    # Generate a presigned URL
     try:
         presign_ttl = timedelta(seconds=settings.MINIO_PRESIGN_TTL_SECONDS)
         url = minio_client.presigned_get_object(

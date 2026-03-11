@@ -6,7 +6,6 @@ import asyncio
 import json
 import logging
 import os
-import subprocess
 import tempfile
 import time
 import uuid
@@ -40,15 +39,20 @@ def _get_minio_client():
         return None
     try:
         from minio import Minio
+        from minio.error import S3Error
         client = Minio(
             settings.MINIO_ENDPOINT,
             access_key=settings.MINIO_ACCESS_KEY,
             secret_key=settings.MINIO_SECRET_KEY,
-            secure=False,
+            secure=settings.MINIO_SECURE,
         )
-        # Ensure bucket exists
+        # Ensure bucket exists — guard against TOCTOU race in multi-worker setups
         if not client.bucket_exists(settings.MINIO_BUCKET):
-            client.make_bucket(settings.MINIO_BUCKET)
+            try:
+                client.make_bucket(settings.MINIO_BUCKET)
+            except S3Error as e:
+                if e.code != "BucketAlreadyOwnedByYou":
+                    raise
         return client
     except Exception as exc:
         logger.warning("MinIO unavailable (%s); clip storage disabled", exc)
@@ -77,7 +81,7 @@ def _extract_and_upload_clip(
         )
         return None
 
-    _MAX_STDERR_LOG = 500
+    import ffmpeg
 
     duration = t_end - t_start
     clip_key = f"{video_id}/{chunk_idx}.mp4"
@@ -86,35 +90,20 @@ def _extract_and_upload_clip(
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
             clip_tmp = f.name
 
-        cmd = [
-            "ffmpeg",
-            "-y",           # overwrite
-            "-ss", str(t_start),
-            "-i", video_path,
-            "-t", str(duration),
-            "-c", "copy",
-            "-avoid_negative_ts", "make_zero",
-            clip_tmp,
-        ]
         try:
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                timeout=60,
+            (
+                ffmpeg
+                .input(video_path, ss=t_start, t=duration)
+                .output(clip_tmp, c="copy", avoid_negative_ts="make_zero")
+                .overwrite_output()
+                .run(quiet=True)
             )
-        except subprocess.TimeoutExpired:
-            logger.warning(
-                "ffmpeg clip extraction timed out for %s chunk %d", video_id, chunk_idx
-            )
-            return None
-
-        if result.returncode != 0:
+        except ffmpeg.Error as e:
             logger.warning(
                 "ffmpeg clip extraction failed for %s chunk %d: %s",
                 video_id,
                 chunk_idx,
-                result.stderr.decode("utf-8", errors="replace")[-_MAX_STDERR_LOG:],
+                e.stderr.decode("utf-8", errors="replace") if e.stderr else str(e),
             )
             return None
 

@@ -156,10 +156,11 @@ class Settings(BaseSettings):
     # MinIO (optional, for video segment clip storage)
     # When set, the worker extracts and uploads video segment clips; store clip_key in Qdrant payload.
     # Leave unset to disable clip storage (graceful degradation — no crash, no clip_key in payload).
-    MINIO_ENDPOINT: Optional[str] = os.getenv("MINIO_ENDPOINT")
+    MINIO_ENDPOINT: Optional[str] = os.getenv("MINIO_ENDPOINT") or None
     MINIO_ACCESS_KEY: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
     MINIO_SECRET_KEY: str = os.getenv("MINIO_SECRET_KEY", "minioadmin")
     MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "clips")
+    MINIO_SECURE: bool = os.getenv("MINIO_SECURE", "false").lower() == "true"
 
 
     class Config:
