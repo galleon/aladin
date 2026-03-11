@@ -114,11 +114,12 @@ def test_case3_no_preamble(caplog):
 # _extract_think_block — no tags at all
 # ---------------------------------------------------------------------------
 
-def test_no_tags_returns_text_as_caption():
+def test_no_tags_returns_none_sentinel():
+    """No think tags → caption is None (sentinel meaning 'use original text')."""
     text = "plain response with no think tags"
     reasoning, caption = _extract_think_block(text)
     assert reasoning == ""
-    assert caption == "plain response with no think tags"
+    assert caption is None  # sentinel: caller should use original text, not empty string
 
 
 # ---------------------------------------------------------------------------
@@ -149,3 +150,36 @@ def test_parse_empty_string():
     result = _parse_vlm_response("")
     assert result["caption"] == ""
     assert result["events"] == []
+
+
+# ---------------------------------------------------------------------------
+# Regression: empty caption_part must NOT fall back to original text
+# (would reintroduce think block / reasoning into the caption)
+# ---------------------------------------------------------------------------
+
+def test_parse_case2_empty_caption_no_fallback():
+    """Case 2 with nothing after </think> must yield empty caption, not the full text."""
+    text = "some reasoning</think>"
+    result = _parse_vlm_response(text)
+    assert "</think>" not in result["caption"]
+    assert "some reasoning" not in result["caption"]
+    assert result["reasoning"] == "some reasoning"
+
+
+def test_parse_case3_empty_preamble_no_fallback(caplog):
+    """Case 3 with nothing before <think> must yield empty caption, not the full text."""
+    import logging
+    text = "<think>incomplete reasoning"
+    with caplog.at_level(logging.WARNING):
+        result = _parse_vlm_response(text)
+    assert "<think>" not in result["caption"]
+    assert "incomplete reasoning" not in result["caption"]
+    assert result["reasoning"] == "incomplete reasoning"
+
+
+def test_parse_no_think_tags_uses_full_text():
+    """When no think tags are present, caption_part is None and full text is parsed."""
+    text = '{"caption": "plain", "events": [], "entities": [], "notes": []}'
+    result = _parse_vlm_response(text)
+    assert result["caption"] == "plain"
+    assert result.get("reasoning", "") == ""

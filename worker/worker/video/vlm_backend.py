@@ -181,11 +181,14 @@ def _strip_wrapper_tags(text: str) -> str:
     return text.strip()
 
 
-def _extract_think_block(text: str) -> tuple[str, str]:
+def _extract_think_block(text: str) -> tuple[str, str | None]:
     """
     Extract think block from VLM response (e.g. cosmos-reason2).
-    Returns (reasoning_text, caption_text). Caption is the content after think block, used for embedding.
-    Reasoning is stored for UI/debug.
+    Returns (reasoning_text, caption_text_or_None).
+
+    caption is None when no think tags were found at all (caller should use original text).
+    caption is "" (empty string) when think tags were present but left no answer content —
+    callers must NOT fall back to original text in that case (it would reintroduce the think block).
 
     Handles three cases:
       1. Both <think> and </think> present — normal chain-of-thought.
@@ -222,7 +225,8 @@ def _extract_think_block(text: str) -> tuple[str, str]:
         )
         return (reasoning, caption)
 
-    return ("", _strip_wrapper_tags(text))
+    # No think tags found — return None for caption so callers know to use original text.
+    return ("", None)
 
 
 def _salvage_caption_from_truncated(json_str: str) -> str:
@@ -252,7 +256,10 @@ def _parse_vlm_response(text: str) -> dict[str, Any]:
         return dict(defaults)
 
     reasoning, caption_part = _extract_think_block(text)
-    text_to_parse = caption_part if caption_part else text
+    # caption_part is None  → no think tags present; parse original text as-is.
+    # caption_part is ""    → think tags were present but left no content; use empty string
+    #                         (do NOT fall back to original text — that would reintroduce think block).
+    text_to_parse = text if caption_part is None else caption_part
 
     json_str = _extract_json_object_from_text(text_to_parse)
     if not json_str:
