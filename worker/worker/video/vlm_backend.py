@@ -244,6 +244,20 @@ def _extract_think_block(text: str) -> tuple[str, str | None]:
     return ("", None)
 
 
+def _deduplicate_caption(text: str, min_len: int = 20) -> str:
+    """Remove repeated sentences from a caption, preserving the first occurrence of each."""
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    seen: set[str] = set()
+    result = []
+    for s in sentences:
+        key = re.sub(r'\s+', ' ', s.strip().lower())
+        if len(key) >= min_len and key in seen:
+            continue
+        seen.add(key)
+        result.append(s)
+    return ' '.join(result)
+
+
 def _salvage_caption_from_truncated(json_str: str) -> str:
     """Extract caption value from truncated JSON (e.g. finish_reason=length)."""
     m = re.search(r'"caption"\s*:\s*"((?:[^"\\]|\\.)*)"', json_str)
@@ -475,6 +489,9 @@ class OpenAICompatibleVLMBackend:
                 "model": self.model_id,
                 "messages": messages,
                 "max_tokens": 2048,
+                # Penalise token repetition at the API level (works for vLLM + OpenAI).
+                # Reduces sentence-level looping in long captions.
+                "frequency_penalty": 0.2,
             }
             if is_cosmos:
                 create_kwargs["extra_body"] = {"no_repeat_ngram_size": 3}
@@ -513,6 +530,9 @@ class OpenAICompatibleVLMBackend:
             )
             text = resp.choices[0].message.content if resp.choices else ""
             parsed = _parse_vlm_response(text)
+            # Post-process: remove repeated sentences that slipped past frequency_penalty
+            if isinstance(parsed.get("caption"), str) and parsed["caption"]:
+                parsed["caption"] = _deduplicate_caption(parsed["caption"])
             # Log extracted dict so it is easy to find (grep VLM_EXTRACTED_JSON)
             logger.info(
                 "VLM_EXTRACTED_JSON video_id=%s t_start=%.1f t_end=%.1f",

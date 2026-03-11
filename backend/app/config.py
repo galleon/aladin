@@ -118,6 +118,10 @@ class Settings(BaseSettings):
 
     # MinIO (optional, for video segment clip storage)
     MINIO_ENDPOINT: str | None = os.getenv("MINIO_ENDPOINT") or None
+    # Public endpoint used when generating presigned URLs sent to browsers.
+    # In Docker, MINIO_ENDPOINT is the internal hostname (minio:9000) while browsers
+    # need a routable address (e.g. localhost:9000). Defaults to MINIO_ENDPOINT when unset.
+    MINIO_PUBLIC_ENDPOINT: str | None = os.getenv("MINIO_PUBLIC_ENDPOINT") or None
     MINIO_ACCESS_KEY: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
     MINIO_SECRET_KEY: str = os.getenv("MINIO_SECRET_KEY", "minioadmin")
     MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "clips")

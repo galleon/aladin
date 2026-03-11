@@ -703,4 +703,10 @@ export const voiceApi = {
     },
 };
 
+export const clipsApi = {
+    /** Fetch the presigned URL for a video segment clip as JSON (avoids redirect + auth header issue). */
+    getUrl: (collection: string, pointId: string) =>
+        apiClient.get<{ url: string }>(`/clips/${collection}/${pointId}/url`),
+};
+
 export default apiClient;

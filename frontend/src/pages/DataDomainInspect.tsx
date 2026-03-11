@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { dataDomainsApi } from '../api/client';
-import { ArrowLeft, Loader2, FileText, Video, Copy, ChevronDown, ChevronUp, Table2, Image } from 'lucide-react';
+import { dataDomainsApi, clipsApi } from '../api/client';
+import { ArrowLeft, Loader2, FileText, Video, Copy, ChevronDown, ChevronUp, Table2, Image, Play } from 'lucide-react';
 
 const PREVIEW_LENGTH = 180;
 // Keys rendered with dedicated UI — excluded from the flat metadata pill list
-const METADATA_KEYS_OMIT = ['content', 'text', 'frame_times', 'fields', 'table_content', 'image_data', 'image_caption'];
+const METADATA_KEYS_OMIT = ['content', 'text', 'frame_times', 'fields', 'table_content', 'image_data', 'image_caption', 'cv_meta'];
 
 /** Render a GFM markdown table string as an HTML <table>. Falls back to a <pre> block for non-table input. */
 function MarkdownTable({ md }: { md: string }) {
@@ -47,6 +47,117 @@ const CONTENT_TYPE_META: Record<string, { label: string; color: string }> = {
     image:      { label: 'Image',  color: 'bg-sky-500/20   text-sky-300   border border-sky-500/30'   },
     text:       { label: 'Text',   color: 'bg-violet-500/20 text-violet-300 border border-violet-500/30' },
 };
+
+const LABEL_COLORS: Record<string, string> = {
+    person:     'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+    car:        'bg-blue-500/20    text-blue-300    border border-blue-500/30',
+    truck:      'bg-orange-500/20  text-orange-300  border border-orange-500/30',
+    bicycle:    'bg-yellow-500/20  text-yellow-300  border border-yellow-500/30',
+    motorcycle: 'bg-pink-500/20    text-pink-300    border border-pink-500/30',
+};
+const LABEL_COLOR_DEFAULT = 'bg-slate-500/20 text-slate-300 border border-slate-500/30';
+
+function labelColor(label: string | undefined): string {
+    return LABEL_COLORS[(label ?? '').toLowerCase()] ?? LABEL_COLOR_DEFAULT;
+}
+
+interface BBoxFrame { t: number; x: number; y: number; w: number; h: number; }
+interface CvTrack { track_id: string; global_track_id?: string; label?: string; bboxes: BBoxFrame[]; }
+
+/** Compact table showing detected tracks from cv_meta. */
+function CvMetaTracks({ raw }: { raw: string }) {
+    let tracks: CvTrack[] = [];
+    try { tracks = JSON.parse(raw); } catch { return null; }
+    if (!Array.isArray(tracks) || tracks.length === 0) return null;
+
+    return (
+        <div className="border-t border-slate-800/50 pt-3 mt-1">
+            <p className="text-xs text-slate-500 mb-2">Detected tracks</p>
+            <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                    <thead>
+                        <tr className="text-slate-500">
+                            <th className="text-left px-2 py-1 font-medium">Global ID</th>
+                            <th className="text-left px-2 py-1 font-medium">Label</th>
+                            <th className="text-left px-2 py-1 font-medium">Seg ID</th>
+                            <th className="text-right px-2 py-1 font-medium">First seen</th>
+                            <th className="text-right px-2 py-1 font-medium">Last seen</th>
+                            <th className="text-right px-2 py-1 font-medium">Frames</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {tracks.map((tr, i) => {
+                            const times = tr.bboxes.map(b => b.t).sort((a, b) => a - b);
+                            const first = times[0] ?? 0;
+                            const last = times[times.length - 1] ?? 0;
+                            return (
+                                <tr key={i} className="even:bg-slate-800/20">
+                                    <td className="px-2 py-1">
+                                        <span className="font-mono text-violet-400">{tr.global_track_id ?? '—'}</span>
+                                    </td>
+                                    <td className="px-2 py-1">
+                                        <span className={`px-1.5 py-0.5 rounded text-xs ${labelColor(tr.label)}`}>
+                                            {tr.label ?? 'unknown'}
+                                        </span>
+                                    </td>
+                                    <td className="px-2 py-1 font-mono text-slate-500">{tr.track_id}</td>
+                                    <td className="px-2 py-1 text-right text-slate-400">{first.toFixed(2)}s</td>
+                                    <td className="px-2 py-1 text-right text-slate-400">{last.toFixed(2)}s</td>
+                                    <td className="px-2 py-1 text-right text-slate-400">{tr.bboxes.length}</td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+/** Lazy video player: fetches presigned URL on demand, renders <video> once available. */
+function VideoClipPlayer({ collection, pointId }: { collection: string; pointId: string }) {
+    const [url, setUrl] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await clipsApi.getUrl(collection, pointId);
+            setUrl(res.data.url);
+        } catch {
+            setError('Could not load clip.');
+        } finally {
+            setLoading(false);
+        }
+    }, [collection, pointId]);
+
+    if (error) return <p className="text-xs text-red-400">{error}</p>;
+
+    if (!url) {
+        return (
+            <button
+                type="button"
+                onClick={load}
+                disabled={loading}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/20 text-violet-300 hover:bg-violet-500/30 text-xs disabled:opacity-50"
+            >
+                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                {loading ? 'Loading clip…' : 'Play clip'}
+            </button>
+        );
+    }
+
+    return (
+        <video
+            src={url}
+            controls
+            className="rounded-lg max-w-full border border-slate-700/40"
+            style={{ maxHeight: 280 }}
+        />
+    );
+}
 
 function formatTime(sec: number): string {
     const m = Math.floor(sec / 60);
@@ -176,6 +287,8 @@ export default function DataDomainInspect() {
                             const tEnd = item.payload.t_end as number | undefined;
                             const pageNo = item.payload.page_number ?? item.payload.page;
                             const textType = item.payload.text_type as string | undefined;
+                            const cvMeta = item.payload.cv_meta as string | undefined;
+                            const hasClip = typeof item.payload.clip_key === 'string';
                             const timeRange =
                                 typeof tStart === 'number' && typeof tEnd === 'number'
                                     ? `${formatTime(tStart)} – ${formatTime(tEnd)}`
@@ -229,6 +342,14 @@ export default function DataDomainInspect() {
                                                 )}
                                             </div>
 
+                                            {/* Video clip player */}
+                                            {isVideo && hasClip && (
+                                                <VideoClipPlayer
+                                                    collection={domain.qdrant_collection}
+                                                    pointId={item.id}
+                                                />
+                                            )}
+
                                             {/* Content area — type-aware rendering */}
                                             {contentType === 'image' && imageData ? (
                                                 <div className="space-y-2">
@@ -262,6 +383,11 @@ export default function DataDomainInspect() {
                                                         </button>
                                                     )}
                                                 </div>
+                                            )}
+
+                                            {/* Detected tracks from cv_meta */}
+                                            {cvMeta && typeof cvMeta === 'string' && (
+                                                <CvMetaTracks raw={cvMeta} />
                                             )}
 
                                             {/* Metadata pills */}
