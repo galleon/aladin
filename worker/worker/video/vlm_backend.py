@@ -199,13 +199,22 @@ def _extract_think_block(text: str) -> tuple[str, str | None]:
     has_close = THINK_CLOSE in text
 
     if has_open and has_close:
-        # Case 1: normal — extract between tags
+        # Case 1: normal — find </think> that appears *after* <think>
         start = text.find(THINK_OPEN)
-        end = text.find(THINK_CLOSE)
-        if end > start:
+        end = text.find(THINK_CLOSE, start + len(THINK_OPEN))
+        if end != -1:
             reasoning = text[start + len(THINK_OPEN) : end].strip()
             caption = _strip_wrapper_tags(text[end + len(THINK_CLOSE) :])
             return (reasoning, caption)
+        # Malformed: </think> exists but only before <think> — treat as truncated (Case 3).
+        # Strip the stray </think> from the preamble before returning.
+        reasoning = text[start + len(THINK_OPEN) :].strip()
+        caption = _strip_wrapper_tags(text[:start].replace(THINK_CLOSE, ""))
+        logger.warning(
+            "Malformed think block ordering in VLM response (</think> before <think>); "
+            "treating as truncated."
+        )
+        return (reasoning, caption)
 
     if not has_open and has_close:
         # Case 2: only </think> — opening tag was injected via system/user prompt

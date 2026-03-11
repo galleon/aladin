@@ -123,6 +123,31 @@ def test_no_tags_returns_none_sentinel():
 
 
 # ---------------------------------------------------------------------------
+# _extract_think_block — malformed ordering: </think> before <think>
+# ---------------------------------------------------------------------------
+
+def test_malformed_close_before_open_treated_as_truncated(caplog):
+    """When </think> appears only before <think>, treat as truncated (Case 3 fallback)."""
+    import logging
+    text = "</think>some text<think>reasoning starts here"
+    with caplog.at_level(logging.WARNING, logger="worker.video.vlm_backend"):
+        reasoning, caption = _extract_think_block(text)
+    # caption must NOT be None — tags were present, just malformed
+    assert caption is not None
+    assert "</think>" not in (caption or "")
+    assert "malformed" in caplog.text.lower() or "truncated" in caplog.text.lower()
+
+
+def test_malformed_does_not_return_none_sentinel(caplog):
+    """Malformed ordering must never return None sentinel (would cause caller to use original text)."""
+    import logging
+    text = "</think>preamble<think>reasoning"
+    with caplog.at_level(logging.WARNING):
+        _, caption = _extract_think_block(text)
+    assert caption is not None, "None sentinel is only for 'no think tags present'"
+
+
+# ---------------------------------------------------------------------------
 # _parse_vlm_response — integration
 # ---------------------------------------------------------------------------
 
