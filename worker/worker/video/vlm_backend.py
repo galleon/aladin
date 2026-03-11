@@ -309,6 +309,13 @@ class OpenAICompatibleVLMBackend:
         self.model_id = model_id
         # 0 = auto: uses _COSMOS_R2_DEFAULT_MAX_SIDE for cosmos-reason2, no resize otherwise
         self.max_side = max_side
+        # Read VLM_MAX_FRAMES once at init to avoid per-call import overhead.
+        try:
+            from shared.config import settings as _settings
+            self._cfg_max_frames: int = _settings.VLM_MAX_FRAMES
+        except (ImportError, AttributeError) as e:
+            logger.warning("Could not read VLM_MAX_FRAMES from config: %s", e)
+            self._cfg_max_frames = 0
 
     def analyze_segment(
         self,
@@ -328,15 +335,19 @@ class OpenAICompatibleVLMBackend:
             _COSMOS_R2_DEFAULT_MAX_SIDE if is_cosmos else 0
         )
 
-        # Max frames: env var > auto-detect per model.
-        try:
-            from shared.config import settings as _settings
-            _cfg_max = _settings.VLM_MAX_FRAMES
-        except (ImportError, AttributeError) as e:
-            logger.warning("Could not read VLM_MAX_FRAMES from config: %s", e)
-            _cfg_max = 0
+        # Max frames: env var (read at init) > auto-detect per model.
+        _cfg_max = self._cfg_max_frames
         if _cfg_max > 0:
-            max_images = min(_cfg_max, _COSMOS_R2_MAX_FRAMES_CAP if is_cosmos else _cfg_max)
+            if is_cosmos:
+                if _cfg_max > _COSMOS_R2_MAX_FRAMES_CAP:
+                    logger.warning(
+                        "VLM_MAX_FRAMES=%d exceeds cosmos-reason2 hard cap (%d); clamping.",
+                        _cfg_max,
+                        _COSMOS_R2_MAX_FRAMES_CAP,
+                    )
+                max_images = min(_cfg_max, _COSMOS_R2_MAX_FRAMES_CAP)
+            else:
+                max_images = _cfg_max
         else:
             max_images = _COSMOS_R2_DEFAULT_MAX_FRAMES if is_cosmos else _DEFAULT_MAX_FRAMES
 

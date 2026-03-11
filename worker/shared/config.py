@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     VLM_INPUT_MAX_SIDE: int = int(os.getenv("VLM_INPUT_MAX_SIDE", "0"))
     # Max frames per segment sent to VLM (0 = auto: 16 for cosmos-reason2, 8 for others).
     # NOTE: cosmos-reason2 requests are hard-capped at 20 frames in OpenAICompatibleVLMBackend
-    # (_COSMOS_R2_MAX_FRAMES_CAP); values above 20 are silently reduced to 20.
+    # (_COSMOS_R2_MAX_FRAMES_CAP); values above 20 are clamped with a warning at runtime.
     VLM_MAX_FRAMES: int = int(os.getenv("VLM_MAX_FRAMES", "0"))
 
     # YOLO/Roboflow Inference API for object detection (video tracking)
