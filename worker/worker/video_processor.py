@@ -51,7 +51,7 @@ def _get_minio_client():
             try:
                 client.make_bucket(settings.MINIO_BUCKET)
             except S3Error as e:
-                if e.code != "BucketAlreadyOwnedByYou":
+                if e.code not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
                     raise
         return client
     except Exception as exc:

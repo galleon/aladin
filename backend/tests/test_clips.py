@@ -3,9 +3,10 @@
 from unittest.mock import MagicMock, patch
 
 
-def test_get_clip_no_minio(client):
+def test_get_clip_no_minio(client, monkeypatch):
     """Returns 503 when MINIO_ENDPOINT is not configured."""
-    # Default settings have MINIO_ENDPOINT=None, so _get_minio_client raises 503
+    # Patch settings directly so the test is hermetic regardless of the ambient environment.
+    monkeypatch.setattr("app.routers.clips.settings.MINIO_ENDPOINT", None)
     response = client.get("/api/clips/my_collection/some-point-id")
     assert response.status_code == 503
 
