@@ -197,6 +197,8 @@ services:
             OCR_DET_DB_BOX_THRESH: ${OCR_DET_DB_BOX_THRESH:-0.55}
             OCR_USE_CLAHE: ${OCR_USE_CLAHE:-true}
             OCR_DET_LIMIT_SIDE_LEN: ${OCR_DET_LIMIT_SIDE_LEN:-1920}
+            # VLM frames per segment: 0 = auto (16 for cosmos-reason2, 8 for others)
+            VLM_MAX_FRAMES: ${VLM_MAX_FRAMES:-0}
             # YOLO imgsz: 1280 = better for 4K, 640 = faster (default)
             CV_IMGSZ: ${CV_IMGSZ:-1280}
             WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}

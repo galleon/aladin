@@ -74,9 +74,14 @@ class Settings(BaseSettings):
     VLM_API_KEY: str = os.getenv("VLM_API_KEY", "sk-dummy-key")
     VLM_MODEL: str = os.getenv("VLM_MODEL", "llava-v1.6-34b")
     # Max pixel side for frames sent to VLM (0 = auto: 640 for cosmos-reason2, no-resize otherwise)
-    # cosmos-reason2-8b has a 32768-token context; 640px gives ~230k px/frame = ~9.5k visual tokens
-    # for 8 frames — well within budget. Override with e.g. VLM_INPUT_MAX_SIDE=480 for tighter budgets.
+    # At 640px max side each frame is ~230k pixels ≈ 1.2k visual tokens;
+    # 16 frames × 1.2k ≈ 19k tokens — well within the 32k context of cosmos-reason2-8b.
+    # Override with e.g. VLM_INPUT_MAX_SIDE=480 for tighter token budgets.
     VLM_INPUT_MAX_SIDE: int = int(os.getenv("VLM_INPUT_MAX_SIDE", "0"))
+    # Max frames per segment sent to VLM (0 = auto: 16 for cosmos-reason2, 8 for others).
+    # NOTE: cosmos-reason2 requests are hard-capped at 20 frames in OpenAICompatibleVLMBackend
+    # (_COSMOS_R2_MAX_FRAMES_CAP); values above 20 are clamped with a warning at runtime.
+    VLM_MAX_FRAMES: int = int(os.getenv("VLM_MAX_FRAMES", "0"))
 
     # YOLO/Roboflow Inference API for object detection (video tracking)
     YOLO_API_URL: Optional[str] = os.getenv("YOLO_API_URL")
