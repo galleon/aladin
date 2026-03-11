@@ -3,7 +3,8 @@
 # Run from project root: ./scripts/restart-stack.sh
 #
 # Options:
-#   -p, --prune   Free Docker disk space before building (run if you hit "no space left on device")
+#   --no-prune      Skip Docker disk-space cleanup (default: prune is ON)
+#   --no-storage    Exclude the MinIO storage profile (default: storage is ON)
 #
 # Data safety: Prune and down do NOT remove volumes. Agents, users, and DB
 # stay in postgres_data; uploads in uploads_data. Only images/cache are pruned.
@@ -11,30 +12,37 @@
 set -e
 cd "$(dirname "$0")/.."
 
-PRUNE=0
+PRUNE=1
+STORAGE=1
 for arg in "$@"; do
   case "$arg" in
-    -p|--prune) PRUNE=1 ;;
+    --no-prune)   PRUNE=0 ;;
+    --no-storage) STORAGE=0 ;;
   esac
 done
 
-echo "Stopping all services..."
-docker compose down
+COMPOSE_PROFILES_ARG=""
+if [ "$STORAGE" = 1 ]; then
+  COMPOSE_PROFILES_ARG="--profile storage"
+fi
 
-echo "Removing dangling images (<none>)..."
-docker image prune -f
+echo "Stopping all services..."
+docker compose $COMPOSE_PROFILES_ARG down
 
 if [ "$PRUNE" = 1 ]; then
   echo "Freeing Docker disk space (build cache, unused images; volumes are NOT touched)..."
   docker builder prune -a -f
   docker system prune -f
+else
+  echo "Removing dangling images (<none>)..."
+  docker image prune -f
 fi
 
 echo "Rebuilding frontend, backend, worker, and chat-ui with --no-cache..."
 docker compose build --no-cache frontend backend worker chat-ui
 
 echo "Starting stack..."
-docker compose up -d
+docker compose $COMPOSE_PROFILES_ARG up -d
 
 echo ""
 echo "Waiting for backend to be ready..."
@@ -52,5 +60,8 @@ echo "Stack is running:"
 echo "  - Admin UI (data domains, monitoring): http://localhost:5174/"
 echo "  - User-facing Chat UI (chat, translation): http://localhost:7860/"
 echo "  - Backend API:                           http://localhost:3000"
+if [ "$STORAGE" = 1 ]; then
+echo "  - MinIO console (clip storage):          http://localhost:9001"
+fi
 echo ""
 echo "Do a hard refresh in the browser (Cmd+Shift+R or Ctrl+Shift+R) to avoid cached assets."
