@@ -6,7 +6,8 @@ A full-stack RAG (Retrieval-Augmented Generation) platform for building AI assis
 
 - **Document RAG** — Upload PDFs, DOCX, TXT, MD, CSV, JSON, or crawl web pages. Documents are chunked, embedded, and stored in Qdrant for semantic search. Chat with agents that cite sources with relevance scores.
 - **Voice chat with VAD** — Talk to your agents using voice input with automatic Voice Activity Detection (VAD). Responses can be read aloud with text-to-speech. Uses OpenAI-compatible STT/TTS APIs.
-- **Video transcription** — Transcribe video/audio files via Whisper API. Optionally analyse segments with a vision LLM (VLM) and YOLO object tracking.
+- **Video transcription & analysis** — Transcribe video/audio files via Whisper API. Analyse segments with a vision LLM (VLM) and YOLO object tracking with globally consistent cross-segment track IDs.
+- **Video clip storage** — Optionally store extracted video segment clips in MinIO. The backend serves clips as short-lived presigned URL redirects (`GET /api/clips/{collection}/{point_id}`).
 - **Document translation** — Translate documents between languages using any OpenAI-compatible LLM.
 - **Multi-LLM support** — Any OpenAI-compatible endpoint (OpenAI, Anthropic via proxy, LiteLLM, local models). Models are fetched dynamically from the configured endpoint.
 - **Dynamic tool-calling agents** — Agents can be equipped with tools (web ingestion, knowledge-base search, translation) via a ReAct loop powered by LangGraph. Jobs triggered by tools are tracked in PostgreSQL and visible in the job management UI.
@@ -22,16 +23,15 @@ Frontend (React/TS, port 5174)
   |       |── PostgreSQL (metadata)
   │       │── Qdrant (vector search)
   │       │── Redis (job queue)
-  │       │── LiteLLM (port 4000) ── spark-1 (granite_docling, cosmos)
-  │                                └── spark-2 (thinking, embeddings, reranker)
+  │       └── LLM APIs (OpenAI-compatible, direct to vLLM endpoints)
   │
   └── Worker (ARQ)
           |── document ingestion
           |── video transcription + VLM analysis
-          |── web crawling
+          └── web crawling
 ```
 
-Additional services: chat-ui (port 7860), Jaeger tracing (optional, `observability` profile).
+Additional services: chat-ui (port 7860), MinIO clip storage (optional, `storage` profile, port 9000/9001), Jaeger tracing (optional, `observability` profile).
 
 ## Quick start
 
@@ -44,22 +44,18 @@ Additional services: chat-ui (port 7860), Jaeger tracing (optional, `observabili
 
 ```bash
 cp env.local.template .env
-# Edit .env — set SECRET_KEY and the two node IPs if using a multi-node GPU setup:
-#   SPARK_1_IP=<ip of node 1>
-#   SPARK_2_IP=<ip of node 2>
+# Edit .env — set SECRET_KEY, LLM_API_BASE, EMBEDDING_API_BASE, and other endpoints
 
-docker-compose up --build
+./scripts/restart-stack.sh
 ```
 
-LiteLLM starts automatically as part of the stack (port 4000) and routes requests
-to the configured model backends via `litellm.yaml`. Backend and worker containers
-connect to it using the internal Docker hostname `litellm:4000` — no `.local` mDNS
-resolution required.
+`restart-stack.sh` builds all services, prunes Docker disk space, and starts the stack with the MinIO `storage` profile enabled by default. Pass `--no-storage` to exclude MinIO or `--no-prune` to skip the disk-space cleanup.
 
 The application will be available at:
 - **Frontend**: http://localhost:5174
 - **Backend API**: http://localhost:3000/docs
 - **Qdrant Dashboard**: http://localhost:6333/dashboard
+- **MinIO Console**: http://localhost:9001 (when `storage` profile is active)
 
 ### Usage
 
@@ -98,7 +94,8 @@ backend/              FastAPI application
     schemas.py        Pydantic request/response schemas
     config.py         Settings from environment variables
     routers/          REST endpoints (auth, agents, conversations, data_domains,
-                      ingestion, jobs, models, stats, translation, video_transcription)
+                      ingestion, jobs, models, stats, translation, video_transcription,
+                      clips)
     services/         Business logic (RAG, embeddings, Qdrant, auth, document
                       processing, translation, video transcription, knowledge graph)
     tools/            LangChain @tool definitions for tool-calling agents
@@ -126,7 +123,7 @@ scripts/              Utility scripts (migration runners, stack restart)
 | Backend | FastAPI, SQLAlchemy 2.0, ARQ, LangChain/LangGraph, structlog |
 | Frontend | React 18, TypeScript, Tailwind CSS, Vite, React Query, React Router 6 |
 | Worker | ARQ, docling, marker-pdf, crawl4ai, ffmpeg, opencv, ultralytics (YOLO) |
-| Infrastructure | PostgreSQL, Qdrant, Redis, LiteLLM, Docker Compose |
+| Infrastructure | PostgreSQL, Qdrant, Redis, MinIO (optional), Docker Compose |
 | Python packaging | uv |
 
 ## Environment variables
@@ -136,15 +133,15 @@ See `env.local.template` for the full list. Key variables:
 | Variable | Purpose |
 |----------|---------|
 | `SECRET_KEY` | JWT signing key (min 32 chars) |
-| `SPARK_1_IP` | IP of GPU node 1 (injected as `spark-1.internal` in containers) |
-| `SPARK_2_IP` | IP of GPU node 2 (injected as `spark-2.internal` in containers) |
-| `LLM_API_BASE` / `LLM_API_KEY` | OpenAI-compatible LLM endpoint (overridden to `litellm:4000` in Docker) |
+| `LLM_API_BASE` / `LLM_API_KEY` | OpenAI-compatible LLM endpoint |
 | `EMBEDDING_API_BASE` / `EMBEDDING_MODEL` | Embedding endpoint and model name |
 | `STT_API_BASE` / `STT_API_KEY` / `STT_MODEL` | Speech-to-Text API for voice chat |
 | `TTS_API_BASE` / `TTS_API_KEY` / `TTS_MODEL` | Text-to-Speech API for voice chat |
 | `WHISPER_API_BASE` | Whisper API for video transcription |
-| `VLM_API_BASE` / `VLM_MODEL` | Vision LLM for video analysis |
+| `VLM_API_BASE` / `VLM_MODEL` | Vision LLM for video segment analysis |
+| `VLM_MAX_FRAMES` | Max frames per segment sent to VLM (0 = auto: 16 for cosmos-reason2, 8 for others) |
 | `DOCLING_API_BASE` / `DOCLING_MODEL` | Document conversion model |
+| `MINIO_ENDPOINT` | MinIO host:port for video clip storage (unset = disabled) |
 | `DB_*`, `QDRANT_*`, `REDIS_*` | Service connection settings |
 
 ## License
