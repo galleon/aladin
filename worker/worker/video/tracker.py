@@ -460,17 +460,13 @@ class TrackletFuser:
                 if ct.track_id not in matched_curr:
                     local_to_global[(seg_idx, ct.track_id)] = _new_global_id()
 
-        # Apply global IDs back to Tracklet objects (create new Tracklet with global_track_id set)
+        # Apply global IDs back to Tracklet objects — use model_copy so any future
+        # Tracklet fields are preserved without requiring changes here.
         result = []
         for seg_idx, seg_tracks in enumerate(segments_tracks):
             new_seg = []
             for t in seg_tracks:
                 gid = local_to_global.get((seg_idx, t.track_id))
-                new_seg.append(Tracklet(
-                    track_id=t.track_id,
-                    bboxes=t.bboxes,
-                    label=t.label,
-                    global_track_id=gid,
-                ))
+                new_seg.append(t.model_copy(update={"global_track_id": gid}))
             result.append(new_seg)
         return result

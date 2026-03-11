@@ -405,6 +405,11 @@ def run_video_pipeline(
                 for fused_tracks in fused_segments
             ]
             logger.debug("TrackletFuser: global IDs assigned across %d segments", len(segments))
+    elif enable_cv and not cv_before_vlm:
+        logger.warning(
+            "TrackletFuser skipped: cv_before_vlm=False (legacy sequential mode). "
+            "global_track_id will not be set on any tracklet."
+        )
 
     total_frames = 0
     out_path.parent.mkdir(parents=True, exist_ok=True)
