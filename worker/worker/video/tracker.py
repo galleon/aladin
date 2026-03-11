@@ -346,3 +346,123 @@ class YOLOAPITracker:
                 )
             )
         return tracklets
+
+
+class TrackletFuser:
+    """
+    Assign globally consistent track IDs across segment boundaries.
+
+    Strategy: for each pair of adjacent segments, find frames in the overlap window
+    (shared timestamps within tolerance). For each tracklet in segment N+1, find the
+    best IoU match among tracklets in segment N's last frames. If IoU >= threshold,
+    they get the same global ID. Otherwise assign a new one.
+
+    Global IDs use the format "G001", "G002", ... to distinguish from local segment IDs.
+    """
+
+    def __init__(self, iou_threshold: float = 0.4, time_tolerance: float = 0.1):
+        self.iou_threshold = iou_threshold
+        self.time_tolerance = time_tolerance
+
+    def fuse(
+        self,
+        segments_tracks: list[list[Tracklet]],  # one list of Tracklets per segment
+        segments_frame_times: list[list[float]],  # one list of frame timestamps per segment
+    ) -> list[list[Tracklet]]:
+        """
+        Assign global_track_id to all tracklets across all segments.
+        Returns the same structure with global_track_id set on each Tracklet.
+        """
+        if not segments_tracks:
+            return segments_tracks
+
+        global_counter = 0
+        # local_to_global: maps (seg_idx, local_track_id) -> global_id string
+        local_to_global: dict[tuple[int, str], str] = {}
+
+        def _new_global_id() -> str:
+            nonlocal global_counter
+            global_counter += 1
+            return f"G{global_counter:03d}"
+
+        def _bbox_iou(a: BBoxFrame, b: BBoxFrame) -> float:
+            ax1, ay1 = a.x, a.y
+            ax2, ay2 = a.x + a.w, a.y + a.h
+            bx1, by1 = b.x, b.y
+            bx2, by2 = b.x + b.w, b.y + b.h
+            ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+            ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+            inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+            if inter == 0:
+                return 0.0
+            union = (a.w * a.h) + (b.w * b.h) - inter
+            return inter / union if union > 0 else 0.0
+
+        def _last_bbox(tracklet: Tracklet, seg_times: list[float]) -> BBoxFrame | None:
+            """Return the bbox closest to the end of the segment."""
+            if not tracklet.bboxes:
+                return None
+            return max(tracklet.bboxes, key=lambda b: b.t)
+
+        def _first_bbox(tracklet: Tracklet) -> BBoxFrame | None:
+            if not tracklet.bboxes:
+                return None
+            return min(tracklet.bboxes, key=lambda b: b.t)
+
+        # Assign global IDs for segment 0
+        for t in segments_tracks[0]:
+            gid = _new_global_id()
+            local_to_global[(0, t.track_id)] = gid
+
+        # For each subsequent segment, try to match with previous
+        for seg_idx in range(1, len(segments_tracks)):
+            prev_tracks = segments_tracks[seg_idx - 1]
+            curr_tracks = segments_tracks[seg_idx]
+
+            # Build a lookup: prev tracklet -> its last bbox
+            prev_ends: list[tuple[Tracklet, BBoxFrame]] = []
+            for pt in prev_tracks:
+                bb = _last_bbox(pt, segments_frame_times[seg_idx - 1])
+                if bb is not None:
+                    prev_ends.append((pt, bb))
+
+            matched_curr: set[str] = set()
+
+            for ct in curr_tracks:
+                first_bb = _first_bbox(ct)
+                if first_bb is None:
+                    continue
+
+                best_iou = 0.0
+                best_prev = None
+                for pt, pb in prev_ends:
+                    iou = _bbox_iou(first_bb, pb)
+                    if iou > best_iou:
+                        best_iou = iou
+                        best_prev = pt
+
+                if best_iou >= self.iou_threshold and best_prev is not None:
+                    prev_gid = local_to_global.get((seg_idx - 1, best_prev.track_id))
+                    if prev_gid:
+                        local_to_global[(seg_idx, ct.track_id)] = prev_gid
+                        matched_curr.add(ct.track_id)
+
+            # Assign new global IDs for unmatched tracklets in this segment
+            for ct in curr_tracks:
+                if ct.track_id not in matched_curr:
+                    local_to_global[(seg_idx, ct.track_id)] = _new_global_id()
+
+        # Apply global IDs back to Tracklet objects (create new Tracklet with global_track_id set)
+        result = []
+        for seg_idx, seg_tracks in enumerate(segments_tracks):
+            new_seg = []
+            for t in seg_tracks:
+                gid = local_to_global.get((seg_idx, t.track_id))
+                new_seg.append(Tracklet(
+                    track_id=t.track_id,
+                    bboxes=t.bboxes,
+                    label=t.label,
+                    global_track_id=gid,
+                ))
+            result.append(new_seg)
+        return result

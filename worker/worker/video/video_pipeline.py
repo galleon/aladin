@@ -24,7 +24,7 @@ from .schemas import (
 )
 from .video_processor import segment_video
 from .vlm_backend import VLMBackend, unpack_vlm_for_log
-from .tracker import NoopTracker, SimpleColorBlobTracker, Tracker, YOLOTracker, YOLOAPITracker
+from .tracker import NoopTracker, SimpleColorBlobTracker, Tracker, YOLOTracker, YOLOAPITracker, TrackletFuser
 from .deblurrer import Deblurrer, _get_deblurrer
 
 logger = logging.getLogger(__name__)
@@ -393,6 +393,19 @@ def run_video_pipeline(
         cv_elapsed = time.perf_counter() - cv_start
         total_tracks = sum(len(t) for t, _ in cv_results)
         logger.info("CV pipeline: %d segments in %.2fs, %d total tracks", len(segments), cv_elapsed, total_tracks)
+
+        # Fuse cross-segment track IDs for globally consistent identifiers
+        if cv_results:
+            fuser = TrackletFuser()
+            fused_segments = fuser.fuse(
+                [tracks for tracks, _ in cv_results],
+                [seg.frame_times for seg in segments],
+            )
+            cv_results = [
+                (fused_tracks, _tracks_to_json(fused_tracks))
+                for fused_tracks in fused_segments
+            ]
+            logger.debug("TrackletFuser: global IDs assigned across %d segments", len(segments))
 
     total_frames = 0
     out_path.parent.mkdir(parents=True, exist_ok=True)

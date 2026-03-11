@@ -44,6 +44,7 @@ class Tracklet(BaseModel):
     track_id: str = Field(..., description="Stable ID, e.g. 'T07', 'Car_T07'.")
     bboxes: list[BBoxFrame] = Field(default_factory=list, description="Bboxes per frame.")
     label: str | None = Field(default=None, description="Optional class label.")
+    global_track_id: str | None = Field(default=None, description="Globally consistent ID across segments, e.g. 'G001'.")
 
 
 # --- Segment (internal: frames in memory; dataclass to hold BGR arrays) ---
