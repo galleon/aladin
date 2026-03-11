@@ -121,6 +121,20 @@ def _frame_to_base64_jpeg(frame_bgr: np.ndarray, max_side: int = 0) -> str:
     return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
+def _burn_timestamp(frame_bgr: np.ndarray, t: float) -> np.ndarray:
+    """Overlay timestamp text in the bottom-left corner of a frame (in-place copy)."""
+    frame = frame_bgr.copy()
+    label = f"{t:.2f}s"
+    h = frame.shape[0]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale, thickness = 0.55, 1
+    # Black shadow for legibility on any background
+    cv2.putText(frame, label, (11, h - 9), font, scale, (0, 0, 0), thickness + 1, cv2.LINE_AA)
+    # White text on top
+    cv2.putText(frame, label, (10, h - 10), font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
+    return frame
+
+
 def _extract_json_object_from_text(text: str) -> str | None:
     """Extract a single top-level JSON object from text (handles ```json ... ``` or raw {...})."""
     text = text.strip()
@@ -337,6 +351,13 @@ class OpenAICompatibleVLMBackend:
         else:
             prompt = get_prompt(mode, t_start, t_end, num_frames, tracks_json, model_id=self.model_id)
 
+        # Read burn_timestamps setting
+        try:
+            from shared.config import settings as _settings
+            _burn_ts = _settings.VLM_BURN_TIMESTAMPS
+        except Exception:
+            _burn_ts = False
+
         # Encode frames (resized) — images go FIRST in content (NVIDIA ordering)
         valid_frames = [
             (f, t) for f, t in zip(frames_bgr, frame_times)
@@ -346,6 +367,8 @@ class OpenAICompatibleVLMBackend:
         image_content: list[dict[str, Any]] = []
         used_times: list[float] = []
         for frame, t in valid_frames[:max_images]:
+            if _burn_ts:
+                frame = _burn_timestamp(frame, t)
             b64 = _frame_to_base64_jpeg(frame, max_side=effective_max_side)
             if b64:
                 image_content.append({
@@ -370,6 +393,8 @@ class OpenAICompatibleVLMBackend:
             f"These {len(image_content)} frames were sampled from the video segment "
             f"[{t_start:.1f}s\u2013{t_end:.1f}s] at timestamps: {ts_str}."
         )
+        if _burn_ts:
+            timestamp_header += " Each frame has its timestamp overlaid in the bottom-left corner."
         full_prompt = f"{timestamp_header}\n\n{prompt}"
 
         # Images before text (NVIDIA/cosmos-reason2 pattern)

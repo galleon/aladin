@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     # cosmos-reason2-8b has a 32768-token context; 640px gives ~230k px/frame = ~9.5k visual tokens
     # for 8 frames — well within budget. Override with e.g. VLM_INPUT_MAX_SIDE=480 for tighter budgets.
     VLM_INPUT_MAX_SIDE: int = int(os.getenv("VLM_INPUT_MAX_SIDE", "0"))
+    # Burn per-frame timestamps as text overlay (bottom-left) before VLM encoding.
+    # When enabled, the VLM prompt is also updated to inform the model timestamps are visible.
+    VLM_BURN_TIMESTAMPS: bool = os.getenv("VLM_BURN_TIMESTAMPS", "false").lower() == "true"
 
     # YOLO/Roboflow Inference API for object detection (video tracking)
     YOLO_API_URL: Optional[str] = os.getenv("YOLO_API_URL")

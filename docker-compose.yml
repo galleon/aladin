@@ -173,6 +173,7 @@ services:
             VLM_API_BASE: http://spark-1.internal:8001/v1
             VLM_API_KEY: sk-dummy-key
             VLM_MODEL: cosmos-reason2-8b
+            VLM_BURN_TIMESTAMPS: ${VLM_BURN_TIMESTAMPS:-false}
             # YOLO/Roboflow Inference API (video object tracking)
             YOLO_API_URL: ${YOLO_API_URL:-}
             YOLO_API_KEY: ${YOLO_API_KEY:-}
