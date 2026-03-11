@@ -1,5 +1,14 @@
 """Unit tests for VLM response parsing helpers in vlm_backend.py."""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
 import pytest
+
+_worker_root = Path(__file__).resolve().parent.parent
+if str(_worker_root) not in sys.path:
+    sys.path.insert(0, str(_worker_root))
 
 from worker.video.vlm_backend import (
     _extract_think_block,
