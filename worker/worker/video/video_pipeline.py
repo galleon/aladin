@@ -399,7 +399,6 @@ def run_video_pipeline(
             fuser = TrackletFuser()
             fused_segments = fuser.fuse(
                 [tracks for tracks, _ in cv_results],
-                [seg.frame_times for seg in segments],
             )
             cv_results = [
                 (fused_tracks, _tracks_to_json(fused_tracks))

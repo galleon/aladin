@@ -352,22 +352,25 @@ class TrackletFuser:
     """
     Assign globally consistent track IDs across segment boundaries.
 
-    Strategy: for each pair of adjacent segments, find frames in the overlap window
-    (shared timestamps within tolerance). For each tracklet in segment N+1, find the
-    best IoU match among tracklets in segment N's last frames. If IoU >= threshold,
-    they get the same global ID. Otherwise assign a new one.
+    Strategy: for each pair of adjacent segments, compare the last known bbox of each
+    tracklet in segment N against the first known bbox of each tracklet in segment N+1.
+    If the best IoU >= iou_threshold, they are considered the same object and share a
+    global ID. Matching is one-to-one: once a prev tracklet is claimed it cannot match a
+    second curr tracklet.
+
+    NOTE: Global IDs are only assigned in the cv_before_vlm pipeline path. The legacy
+    sequential-per-segment path does not run the fuser, so global_track_id remains None
+    in that mode.
 
     Global IDs use the format "G001", "G002", ... to distinguish from local segment IDs.
     """
 
-    def __init__(self, iou_threshold: float = 0.4, time_tolerance: float = 0.1):
+    def __init__(self, iou_threshold: float = 0.4):
         self.iou_threshold = iou_threshold
-        self.time_tolerance = time_tolerance
 
     def fuse(
         self,
-        segments_tracks: list[list[Tracklet]],  # one list of Tracklets per segment
-        segments_frame_times: list[list[float]],  # one list of frame timestamps per segment
+        segments_tracks: list[list[Tracklet]],
     ) -> list[list[Tracklet]]:
         """
         Assign global_track_id to all tracklets across all segments.
@@ -398,13 +401,14 @@ class TrackletFuser:
             union = (a.w * a.h) + (b.w * b.h) - inter
             return inter / union if union > 0 else 0.0
 
-        def _last_bbox(tracklet: Tracklet, seg_times: list[float]) -> BBoxFrame | None:
-            """Return the bbox closest to the end of the segment."""
+        def _last_bbox(tracklet: Tracklet) -> BBoxFrame | None:
+            """Return the temporally last bbox of this tracklet."""
             if not tracklet.bboxes:
                 return None
             return max(tracklet.bboxes, key=lambda b: b.t)
 
         def _first_bbox(tracklet: Tracklet) -> BBoxFrame | None:
+            """Return the temporally first bbox of this tracklet."""
             if not tracklet.bboxes:
                 return None
             return min(tracklet.bboxes, key=lambda b: b.t)
@@ -414,19 +418,20 @@ class TrackletFuser:
             gid = _new_global_id()
             local_to_global[(0, t.track_id)] = gid
 
-        # For each subsequent segment, try to match with previous
+        # For each subsequent segment, try to match with previous (one-to-one greedy)
         for seg_idx in range(1, len(segments_tracks)):
             prev_tracks = segments_tracks[seg_idx - 1]
             curr_tracks = segments_tracks[seg_idx]
 
-            # Build a lookup: prev tracklet -> its last bbox
+            # Build end-bbox list for prev segment
             prev_ends: list[tuple[Tracklet, BBoxFrame]] = []
             for pt in prev_tracks:
-                bb = _last_bbox(pt, segments_frame_times[seg_idx - 1])
+                bb = _last_bbox(pt)
                 if bb is not None:
                     prev_ends.append((pt, bb))
 
             matched_curr: set[str] = set()
+            matched_prev: set[str] = set()  # enforce one-to-one: each prev tracklet matches at most once
 
             for ct in curr_tracks:
                 first_bb = _first_bbox(ct)
@@ -436,6 +441,8 @@ class TrackletFuser:
                 best_iou = 0.0
                 best_prev = None
                 for pt, pb in prev_ends:
+                    if pt.track_id in matched_prev:
+                        continue  # already claimed by another curr tracklet
                     iou = _bbox_iou(first_bb, pb)
                     if iou > best_iou:
                         best_iou = iou
@@ -446,6 +453,7 @@ class TrackletFuser:
                     if prev_gid:
                         local_to_global[(seg_idx, ct.track_id)] = prev_gid
                         matched_curr.add(ct.track_id)
+                        matched_prev.add(best_prev.track_id)
 
             # Assign new global IDs for unmatched tracklets in this segment
             for ct in curr_tracks:
