@@ -30,6 +30,7 @@ dependencies = [
     "networkx>=3.0",
     "weasyprint>=60.0",
     "ffmpeg-python>=0.2.0",
+    "minio>=7.2.0",
     "marker-pdf[full]>=1.0.0",
     "mcp>=1.0.0",
     "pypdfium2>=4.0.0",

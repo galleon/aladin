@@ -1,6 +1,7 @@
 """API Routers."""
 from . import (
     auth,
+    clips,
     data_domains,
     documents,
     agents,
@@ -15,6 +16,7 @@ from . import (
 
 __all__ = [
     "auth",
+    "clips",
     "data_domains",
     "documents",
     "agents",
