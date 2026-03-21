@@ -57,9 +57,12 @@ class Settings(BaseSettings):
     EMBEDDING_API_KEY: str = os.getenv("EMBEDDING_API_KEY", "sk-dummy-key")
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
     EMBEDDING_DIMENSION: int = int(os.getenv("EMBEDDING_DIMENSION", "1536"))
-    # Max INPUT length (chars) per text sent to embedding API. Many models (e.g. bge) have max 512 INPUT tokens;
-    # 1024 chars is safe for 512-token models; increase only if your embedding model supports longer context.
-    EMBEDDING_MAX_INPUT_CHARS: int = int(os.getenv("EMBEDDING_MAX_INPUT_CHARS", "1024"))
+    # Max INPUT length (chars) per text sent to embedding API.
+    # bge-large-en-v1.5 hard-caps at 512 INPUT tokens. Dense technical text (numbers, special
+    # chars) can hit 0.7-0.8 chars/token, meaning 1024 chars → ~780 tokens — over the limit.
+    # 600 chars at 0.75 chars/token worst-case ≈ 450 tokens, safely under 512.
+    # Increase only if your embedding model supports longer context (e.g. text-embedding-3).
+    EMBEDDING_MAX_INPUT_CHARS: int = int(os.getenv("EMBEDDING_MAX_INPUT_CHARS", "600"))
 
     # Docling: external REST API (optional). When set, file ingestion uses this instead of in-process docling.
     # If the base URL is OpenAI-compatible (e.g. /v1/models lists granite_docling), we call /v1/chat/completions with DOCLING_MODEL.

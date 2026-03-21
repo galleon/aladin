@@ -849,10 +849,44 @@ class RichFileProcessor:
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i : i + batch_size]
             texts = [truncate_for_embedding(c.content or "") for c in batch]
-            response = self.embedding_client.embeddings.create(
-                model=self.embedding_model_id,
-                input=texts,
-            )
+            try:
+                response = self.embedding_client.embeddings.create(
+                    model=self.embedding_model_id,
+                    input=texts,
+                )
+            except Exception as batch_exc:
+                # Batch failed (e.g. one chunk still over the token limit despite truncation).
+                # Retry each chunk individually, halving the char limit on retry, and skip any
+                # that still fail rather than aborting the whole document.
+                logger.warning(
+                    "Embedding batch %d-%d failed (%s); retrying individually.",
+                    i, i + len(batch), batch_exc,
+                )
+                fallback_limit = max(200, (getattr(self, '_embed_char_limit', None) or 600) // 2)
+                individual_points = []
+                for chunk, text in zip(batch, texts):
+                    try:
+                        r = self.embedding_client.embeddings.create(
+                            model=self.embedding_model_id,
+                            input=[text[:fallback_limit]],
+                        )
+                        individual_points.append(PointStruct(
+                            id=uuid.uuid5(uuid.NAMESPACE_DNS, chunk.id),
+                            vector=r.data[0].embedding,
+                            payload=self._build_payload(chunk),
+                        ))
+                    except Exception as chunk_exc:
+                        logger.error(
+                            "Skipping chunk %s (content_type=%s, page=%s): embedding failed after retry: %s",
+                            chunk.id, chunk.content_type, chunk.page_number, chunk_exc,
+                        )
+                if individual_points:
+                    self.qdrant.upsert(collection_name=self.collection_name, points=individual_points)
+                    logger.info(
+                        "Rich processor: stored %d/%d chunks (fallback) in %s",
+                        len(individual_points), len(batch), self.collection_name,
+                    )
+                continue
             embeddings = [e.embedding for e in response.data]
             points = [
                 PointStruct(
